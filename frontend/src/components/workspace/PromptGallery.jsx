@@ -2,18 +2,18 @@ import { useState, useEffect } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { X, Copy, Check } from 'lucide-react';
 import ImageCarousel from './ImageCarousel';
+import { getApiUrl } from '../../lib/url';
 
 export default function PromptGallery({ onClose }) {
   const [templates, setTemplates] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('全部');
   const [copiedId, setCopiedId] = useState(null);
   const [loading, setLoading] = useState(true);
-  const generateImage = useAppStore((state) => state.generateImage);
   const setActiveSkill = useAppStore((state) => state.setActiveSkill);
   const setActiveTemplateName = useAppStore((state) => state.setActiveTemplateName);
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/v1/templates')
+    fetch(getApiUrl('/v1/templates'))
       .then(res => res.json())
       .then(data => {
         setTemplates(data.templates);

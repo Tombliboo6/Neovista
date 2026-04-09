@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Heart, TrendingUp, Image, ArrowLeft, Zap, Edit3 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
+import { getApiUrl } from '../../lib/url';
 
 export default function SkillsGallery() {
   const [templates, setTemplates] = useState([]);
@@ -14,7 +15,7 @@ export default function SkillsGallery() {
   const canvasDataUrl = useAppStore((state) => state.canvasDataUrl);
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/v1/templates')
+    fetch(getApiUrl('/v1/templates'))
       .then(res => res.json())
       .then(data => {
         setTemplates(data);

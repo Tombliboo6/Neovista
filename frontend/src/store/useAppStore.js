@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getApiUrl } from '../lib/url';
 import * as fabric from 'fabric';
 import toast from 'react-hot-toast';
 
@@ -952,7 +953,7 @@ export const useAppStore = create((set, get) => ({
         'Authorization': `Bearer ${token}`
       };
 
-      const response = await fetch('http://localhost:8000/api/v1/generate', {
+      const response = await fetch(getApiUrl('/v1/generate'), {
         method: 'POST',
         headers,
         body: JSON.stringify({

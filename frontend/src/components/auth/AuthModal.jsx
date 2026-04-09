@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAppStore } from '../../store/useAppStore';
+import { getApiUrl } from '../../lib/url';
 
 export default function AuthModal({ isOpen, onClose }) {
   const [mode, setMode] = useState('login');
@@ -18,7 +19,7 @@ export default function AuthModal({ isOpen, onClose }) {
       return;
     }
     try {
-      const res = await fetch('http://localhost:8000/api/v1/auth/send-code', {
+      const res = await fetch(getApiUrl('/v1/auth/send-code'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -56,8 +57,8 @@ export default function AuthModal({ isOpen, onClose }) {
 
     try {
       const endpoint = mode === 'login'
-        ? 'http://localhost:8000/api/v1/auth/login'
-        : 'http://localhost:8000/api/v1/auth/register';
+        ? getApiUrl('/v1/auth/login')
+        : getApiUrl('/v1/auth/register');
 
       const body = mode === 'login'
         ? { email, password }

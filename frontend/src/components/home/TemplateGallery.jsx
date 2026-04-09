@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Image, Loader2 } from 'lucide-react';
 import TemplateDetailModal from './TemplateDetailModal';
+import { getApiUrl, getAssetUrl } from '../../lib/url';
 
 export default function TemplateGallery() {
   const [templates, setTemplates] = useState([]);
@@ -8,7 +9,7 @@ export default function TemplateGallery() {
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/v1/templates')
+    fetch(getApiUrl('/v1/templates'))
       .then(res => res.json())
       .then(data => {
         setTemplates(data.templates || []);
@@ -48,9 +49,7 @@ export default function TemplateGallery() {
             {template.images && template.images.length > 0 && (
               <div className="w-full">
                 <img
-                  src={template.images[template.images.length - 1].startsWith('http')
-                    ? template.images[template.images.length - 1]
-                    : `http://localhost:8000${template.images[template.images.length - 1]}`}
+                  src={getAssetUrl(template.images[template.images.length - 1])}
                   alt={template.title}
                   className="w-full h-auto"
                 />

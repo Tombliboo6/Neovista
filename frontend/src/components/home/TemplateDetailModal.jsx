@@ -1,21 +1,20 @@
 import { useState, useEffect } from 'react';
-import { X, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { X, Image as ImageIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../store/useAppStore';
+import { getApiUrl, getAssetUrl } from '../../lib/url';
 
 export default function TemplateDetailModal({ templateId, onClose }) {
   const navigate = useNavigate();
   const [template, setTemplate] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const generateImage = useAppStore((s) => s.generateImage);
   const token = useAppStore((s) => s.token);
   const setShowAuthModal = useAppStore((s) => s.setShowAuthModal);
 
   useEffect(() => {
     if (!templateId) return;
 
-    fetch(`http://localhost:8000/api/v1/templates/${templateId}`)
+    fetch(getApiUrl(`/v1/templates/${templateId}`))
       .then(res => res.json())
       .then(data => {
         setTemplate(data);
@@ -89,7 +88,7 @@ export default function TemplateDetailModal({ templateId, onClose }) {
                   {template.images.map((img, idx) => (
                     <img
                       key={idx}
-                      src={img.startsWith('http') ? img : `http://localhost:8000${img}`}
+                      src={getAssetUrl(img)}
                       alt={`${template.title} - ${idx + 1}`}
                       className="w-full rounded-lg"
                     />
@@ -124,17 +123,9 @@ export default function TemplateDetailModal({ templateId, onClose }) {
               <div className="p-6 border-t border-gray-200">
                 <button
                   onClick={handleUseTemplate}
-                  disabled={isGenerating}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition flex items-center justify-center gap-2"
                 >
-                  {isGenerating ? (
-                    <>
-                      <Loader2 size={18} className="animate-spin" />
-                      <span>生成中...</span>
-                    </>
-                  ) : (
-                    <span>使用此模版</span>
-                  )}
+                  <span>使用此模版</span>
                 </button>
               </div>
             </div>

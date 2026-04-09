@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Edit2, Trash2, Plus, Save, X, Image as ImageIcon } from 'lucide-react';
 import TemplateDetailModal from '../home/TemplateDetailModal';
+import { getApiUrl, getAssetUrl } from '../../lib/url';
 
 export default function AdminPage() {
   const [templates, setTemplates] = useState([]);
@@ -27,7 +28,7 @@ export default function AdminPage() {
 
   const loadTemplates = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/v1/admin/templates', {
+      const response = await fetch(getApiUrl('/v1/admin/templates'), {
         headers: { 'x-admin-token': adminToken }
       });
       if (response.status === 403) {
@@ -73,9 +74,7 @@ export default function AdminPage() {
                   {template.images && template.images.length > 0 && (
                     <div className="w-full">
                       <img
-                        src={template.images[template.images.length - 1].startsWith('http')
-                          ? template.images[template.images.length - 1]
-                          : `http://localhost:8000${template.images[template.images.length - 1]}`}
+                        src={getAssetUrl(template.images[template.images.length - 1])}
                         alt={template.title}
                         className="w-full h-auto"
                       />
@@ -257,7 +256,7 @@ export default function AdminPage() {
                   <button
                     onClick={async () => {
                       try {
-                        await fetch(`http://localhost:8000/api/v1/admin/templates/${editingTemplate.id}`, {
+                        await fetch(getApiUrl(`/v1/admin/templates/${editingTemplate.id}`), {
                           method: 'PUT',
                           headers: {
                             'Content-Type': 'application/json',
