@@ -1,5 +1,10 @@
 # NeoVista 腾讯云 Ubuntu 部署指南
 
+## 当前部署源
+- GitHub 仓库：`git@github.com:wzhoudargon/Neovista.git`
+- 推荐部署分支：`deploy-snapshot`
+- 本文档以下命令默认以 `deploy-snapshot` 分支为准
+
 ## 系统要求
 - Ubuntu 20.04/22.04
 - **Python 3.8+**（项目使用 `Optional[X]` 语法，兼容 Python 3.8+）
@@ -54,13 +59,19 @@ sudo chmod 755 /var/lib/neovista
 ```bash
 # 创建 Web 目录
 sudo mkdir -p /var/www
+sudo chown ubuntu:ubuntu /var/www
 cd /var/www
 
-# 克隆代码（替换为你的仓库地址）
-sudo git clone https://github.com/your-username/neovista.git neovista
+# 使用 ubuntu 用户克隆 deploy-snapshot 分支
+git clone --depth 1 --branch deploy-snapshot git@github.com:wzhoudargon/Neovista.git neovista
 
-# 修改权限（使用 ubuntu 用户）
-sudo chown -R ubuntu:ubuntu /var/www/neovista
+# 如果服务器没有配置 GitHub SSH Key，可以改用 HTTPS：
+# git clone --depth 1 --branch deploy-snapshot https://github.com/wzhoudargon/Neovista.git neovista
+
+# 确认当前代码分支
+cd /var/www/neovista
+git branch --show-current
+# 应该看到：deploy-snapshot
 ```
 
 ---
