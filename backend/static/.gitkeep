@@ -1,0 +1,2 @@
+# 此文件用于确保 backend/static/ 目录被 Git 追踪
+# FastAPI 启动时需要此目录存在
