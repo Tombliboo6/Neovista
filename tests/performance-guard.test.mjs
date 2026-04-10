@@ -18,3 +18,12 @@ test('deploy nginx config enables gzip for static text assets', () => {
   assert.match(conf, /\bgzip_types\b[\s\S]*application\/javascript/);
   assert.match(conf, /\bgzip_types\b[\s\S]*text\/css/);
 });
+
+test('homepage project grid does not depend on blocked external image hosts', () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, 'frontend', 'src', 'components', 'home', 'ProjectGrid.jsx'),
+    'utf8'
+  );
+
+  assert.equal(source.includes('images.unsplash.com'), false);
+});
