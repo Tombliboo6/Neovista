@@ -220,6 +220,8 @@ DEFAULT_AUDIT_RESPONSE = {
     "manual_fix_suggestions": ["请联系技术支持"]
 }
 
+GENERATE_UPSTREAM_TIMEOUT_SECONDS = 120.0
+
 @app.get("/api/v1/templates")
 async def get_templates(limit: Optional[int] = None):
     """获取所有 Prompt 模版"""
@@ -694,7 +696,7 @@ async def generate_image(
                 }
             }
 
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=GENERATE_UPSTREAM_TIMEOUT_SECONDS) as client:
                 response = await client.post(url, json=payload, headers=headers)
                 response.raise_for_status()
                 data = response.json()

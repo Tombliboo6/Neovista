@@ -19,6 +19,13 @@ test('deploy nginx config enables gzip for static text assets', () => {
   assert.match(conf, /\bgzip_types\b[\s\S]*text\/css/);
 });
 
+test('deploy nginx config gives API requests enough upstream timeout budget', () => {
+  const conf = fs.readFileSync(path.join(repoRoot, 'deploy', 'nginx', 'neovista.conf'), 'utf8');
+  assert.match(conf, /location \/api\/ \{[\s\S]*proxy_read_timeout\s+\d+s;/);
+  assert.match(conf, /location \/api\/ \{[\s\S]*proxy_send_timeout\s+\d+s;/);
+  assert.match(conf, /location \/api\/ \{[\s\S]*proxy_connect_timeout\s+\d+s;/);
+});
+
 test('homepage project grid does not depend on blocked external image hosts', () => {
   const source = fs.readFileSync(
     path.join(repoRoot, 'frontend', 'src', 'components', 'home', 'ProjectGrid.jsx'),

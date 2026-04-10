@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { getApiUrl } from '../lib/url';
+import { readApiResponse, getApiErrorMessage } from '../lib/api-response';
 import * as fabric from 'fabric';
 import toast from 'react-hot-toast';
 
@@ -894,7 +895,13 @@ export const useAppStore = create((set, get) => ({
           }),
         });
 
-        const data = await response.json();
+        const payload = await readApiResponse(response);
+        const data = payload.data;
+
+        if (!response.ok) {
+          throw new Error(getApiErrorMessage(response, payload, '批量生成失败，请稍后重试'));
+        }
+
         results.push(data.image_url);
       }
 
@@ -909,7 +916,7 @@ export const useAppStore = create((set, get) => ({
       });
     } catch (error) {
       console.error('Batch generation failed:', error);
-      addChatMessage('assistant', '批量生成失败');
+      addChatMessage('assistant', error.message || '批量生成失败');
       set({ isGenerating: false });
     }
   },
@@ -967,7 +974,8 @@ export const useAppStore = create((set, get) => ({
         }),
       });
 
-      const data = await response.json();
+      const payload = await readApiResponse(response);
+      const data = payload.data;
 
       if (!response.ok) {
         if (response.status === 401) {
@@ -975,7 +983,7 @@ export const useAppStore = create((set, get) => ({
         } else if (response.status === 402) {
           addChatMessage('assistant', '积分不足，请充值');
         } else {
-          addChatMessage('assistant', data.detail || '生成失败，请重试');
+          addChatMessage('assistant', getApiErrorMessage(response, payload, '生成失败，请重试'));
         }
         set({ isGenerating: false });
         return;
