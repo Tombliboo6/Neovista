@@ -14,7 +14,7 @@
 body {
   margin: 0;
   @apply antialiased;
-  font-family: 'DM Sans', system-ui, sans-serif;
+  font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', system-ui, sans-serif;
 }
 
 /* 细滚动条 */
