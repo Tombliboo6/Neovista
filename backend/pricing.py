@@ -4,9 +4,9 @@ from typing import Dict, Final
 CREDITS_PER_YUAN: Final[int] = int(os.getenv("CREDITS_PER_YUAN", "100"))
 WELCOME_CREDITS: Final[int] = int(os.getenv("WELCOME_CREDITS", "200"))
 RESOLUTION_PRICING: Final[Dict[str, int]] = {
-    "1K": 20,
+    "1K": 30,
     "2K": 50,
-    "4K": 80,
+    "4K": 90,
 }
 
 

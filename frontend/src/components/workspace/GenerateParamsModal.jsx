@@ -1,11 +1,6 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
-
-const RESOLUTION_PRICING = {
-  '1K': 20,
-  '2K': 50,
-  '4K': 80,
-};
+import { calculateGenerationCost, RESOLUTION_PRICING } from '../../lib/generationPricing';
 
 export default function GenerateParamsModal({ isOpen, onClose, onConfirm }) {
   const [resolution, setResolution] = useState('2K');
@@ -18,7 +13,7 @@ export default function GenerateParamsModal({ isOpen, onClose, onConfirm }) {
     onClose();
   };
 
-  const totalCost = RESOLUTION_PRICING[resolution] * numImages;
+  const totalCost = calculateGenerationCost(resolution, numImages);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>

@@ -10,12 +10,15 @@ from pricing import calculate_generation_cost
 
 class BillingPricingTest(unittest.TestCase):
     def test_resolution_pricing(self):
-        self.assertEqual(calculate_generation_cost("1K", 1), 20)
+        self.assertEqual(calculate_generation_cost("1K", 1), 30)
         self.assertEqual(calculate_generation_cost("2K", 1), 50)
-        self.assertEqual(calculate_generation_cost("4K", 1), 80)
+        self.assertEqual(calculate_generation_cost("4K", 1), 90)
 
     def test_num_images_multiplier(self):
         self.assertEqual(calculate_generation_cost("2K", 3), 150)
+
+    def test_higher_resolution_multiplier(self):
+        self.assertEqual(calculate_generation_cost("4K", 2), 180)
 
 
 if __name__ == "__main__":
