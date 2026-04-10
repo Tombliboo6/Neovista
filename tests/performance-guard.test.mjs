@@ -27,3 +27,25 @@ test('homepage project grid does not depend on blocked external image hosts', ()
 
   assert.equal(source.includes('images.unsplash.com'), false);
 });
+
+test('home page does not render the heavyweight recent project image grid', () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, 'frontend', 'src', 'components', 'home', 'HomePage.jsx'),
+    'utf8'
+  );
+
+  assert.equal(source.includes("import ProjectGrid from './ProjectGrid';"), false);
+  assert.equal(source.includes('<ProjectGrid />'), false);
+});
+
+test('template gallery requests a limited initial batch and lazy-loads card images', () => {
+  const source = fs.readFileSync(
+    path.join(repoRoot, 'frontend', 'src', 'components', 'home', 'TemplateGallery.jsx'),
+    'utf8'
+  );
+
+  assert.match(source, /INITIAL_TEMPLATE_COUNT\s*=\s*\d+/);
+  assert.match(source, /getApiUrl\(`\/v1\/templates\?limit=\$\{INITIAL_TEMPLATE_COUNT\}`\)/);
+  assert.match(source, /loading="lazy"/);
+  assert.match(source, /decoding="async"/);
+});

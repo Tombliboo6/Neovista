@@ -220,12 +220,36 @@ DEFAULT_AUDIT_RESPONSE = {
 }
 
 @app.get("/api/v1/templates")
-async def get_templates():
+async def get_templates(limit: Optional[int] = None):
     """获取所有 Prompt 模版"""
     try:
         with open('templates_v2.json', 'r', encoding='utf-8') as f:
             templates = json.load(f)
-        return {"templates": templates, "total": len(templates)}
+
+        safe_templates = []
+        for template in templates:
+            images = template.get('images', [])
+            summary_text = template.get('tips') or template.get('display_text', '')
+            safe_templates.append({
+                'id': template['id'],
+                'title': template['title'],
+                'category_id': template.get('category_id', ''),
+                'category_name': template.get('category_name', ''),
+                'subcategory_id': template.get('subcategory_id', ''),
+                'subcategory_name': template.get('subcategory_name', ''),
+                'tips': template.get('tips', ''),
+                'images': images[-1:] if images else [],
+                'is_i2i': template.get('is_i2i', False),
+                'is_multi_step': template.get('is_multi_step', False),
+                'display_text': summary_text[:160],
+                'likes': template.get('likes', 0),
+                'uses': template.get('uses', 0),
+            })
+
+        if limit is not None and limit >= 0:
+            safe_templates = safe_templates[:limit]
+
+        return {"templates": safe_templates, "total": len(templates)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -3,16 +3,21 @@ import { Image, Loader2 } from 'lucide-react';
 import TemplateDetailModal from './TemplateDetailModal';
 import { getApiUrl, getAssetUrl } from '../../lib/url';
 
+const INITIAL_TEMPLATE_COUNT = 12;
+
 export default function TemplateGallery() {
   const [templates, setTemplates] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
 
   useEffect(() => {
-    fetch(getApiUrl('/v1/templates'))
+    fetch(getApiUrl(`/v1/templates?limit=${INITIAL_TEMPLATE_COUNT}`))
       .then(res => res.json())
       .then(data => {
         setTemplates(data.templates || []);
+        setHasMore((data.total || 0) > (data.templates || []).length);
         setIsLoading(false);
       })
       .catch(err => {
@@ -20,6 +25,22 @@ export default function TemplateGallery() {
         setIsLoading(false);
       });
   }, []);
+
+  const handleLoadMore = () => {
+    setIsLoadingMore(true);
+
+    fetch(getApiUrl('/v1/templates'))
+      .then(res => res.json())
+      .then(data => {
+        setTemplates(data.templates || []);
+        setHasMore(false);
+        setIsLoadingMore(false);
+      })
+      .catch(err => {
+        console.error('加载更多模版失败:', err);
+        setIsLoadingMore(false);
+      });
+  };
 
   if (isLoading) {
     return (
@@ -52,6 +73,8 @@ export default function TemplateGallery() {
                   src={getAssetUrl(template.images[template.images.length - 1])}
                   alt={template.title}
                   className="w-full h-auto"
+                  loading="lazy"
+                  decoding="async"
                 />
               </div>
             )}
@@ -68,6 +91,19 @@ export default function TemplateGallery() {
           </button>
         ))}
       </div>
+
+      {hasMore && (
+        <div className="mt-10 flex justify-center">
+          <button
+            onClick={handleLoadMore}
+            disabled={isLoadingMore}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-300 px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isLoadingMore && <Loader2 size={16} className="animate-spin" />}
+            <span>{isLoadingMore ? '加载更多模版中...' : '查看更多模版'}</span>
+          </button>
+        </div>
+      )}
 
       <TemplateDetailModal
         templateId={selectedTemplateId}

@@ -3,7 +3,6 @@ import HomeSearchBox from './HomeSearchBox';
 import CategoryTabs from './CategoryTabs';
 import RecentProjects from './RecentProjects';
 import TemplateGallery from './TemplateGallery';
-import ProjectGrid from './ProjectGrid';
 
 export default function HomePage() {
   return (
@@ -17,7 +16,6 @@ export default function HomePage() {
           <RecentProjects />
         </div>
         <TemplateGallery />
-        <ProjectGrid />
       </main>
     </div>
   );
