@@ -23,6 +23,7 @@ from database import engine, Base, get_db
 from auth import router as auth_router, get_current_user
 from models import User, ChatSession
 from llm_service import init_chat_channels, chat_flash, chat_pro, should_use_pro, CHAT_CHANNELS
+from upstream_errors import format_upstream_error, map_upstream_failure_status
 
 class APIChannel(BaseModel):
     name: str
@@ -722,10 +723,7 @@ async def generate_image(
                     )
 
         except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
-            error_msg = f"渠道 {channel.name} 失败: {type(e).__name__}"
-            if isinstance(e, httpx.HTTPStatusError):
-                error_msg += f" {e.response.status_code}"
-            print(f"⚠️  {error_msg}")
+            print(f"⚠️  {format_upstream_error(channel.name, e)}")
             last_error = e
             continue
         except Exception as e:
@@ -734,7 +732,10 @@ async def generate_image(
             continue
 
     # 所有渠道均失败
-    raise HTTPException(status_code=500, detail=f"所有API渠道均失败: {str(last_error)}")
+    raise HTTPException(
+        status_code=map_upstream_failure_status(last_error),
+        detail=f"所有API渠道均失败: {format_upstream_error('最后渠道', last_error)}"
+    )
 
 @app.get("/")
 async def root():
