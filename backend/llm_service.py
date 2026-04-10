@@ -17,43 +17,90 @@ class ChatChannel(BaseModel):
     name: str
     base_url: str
     api_key: str
-    flash_model: str
-    pro_model: str
+    model: str
 
     class Config:
         frozen = True
 
 
 @lru_cache(maxsize=1)
-def get_chat_channels() -> Tuple[ChatChannel, ...]:
-    """动态加载 CHAT_CHANNEL_1/2/3... 环境变量"""
+def _load_split_chat_channels(kind: str, default_model: str) -> Tuple[ChatChannel, ...]:
+    """动态加载 CHAT_FLASH_CHANNEL_1/2... 或 CHAT_PRO_CHANNEL_1/2... 环境变量"""
     channels = []
     i = 1
     while True:
-        name = os.getenv(f"CHAT_CHANNEL_{i}_NAME")
+        prefix = f"CHAT_{kind}_CHANNEL_{i}"
+        name = os.getenv(f"{prefix}_NAME")
         if not name:
             break
         channels.append(ChatChannel(
             name=name,
-            base_url=os.getenv(f"CHAT_CHANNEL_{i}_BASE_URL"),
-            api_key=os.getenv(f"CHAT_CHANNEL_{i}_API_KEY"),
-            flash_model=os.getenv(f"CHAT_CHANNEL_{i}_FLASH_MODEL", "gemini-2.0-flash"),
-            pro_model=os.getenv(f"CHAT_CHANNEL_{i}_PRO_MODEL", "gemini-2.5-pro")
+            base_url=os.getenv(f"{prefix}_BASE_URL"),
+            api_key=os.getenv(f"{prefix}_API_KEY"),
+            model=os.getenv(f"{prefix}_MODEL", default_model),
         ))
         i += 1
     return tuple(channels)
 
 
-CHAT_CHANNELS = get_chat_channels()
+@lru_cache(maxsize=1)
+def _load_legacy_chat_channels(model_field: str, default_model: str) -> Tuple[ChatChannel, ...]:
+    """兼容旧的 CHAT_CHANNEL_1/2... 变量写法"""
+    channels = []
+    i = 1
+    while True:
+        prefix = f"CHAT_CHANNEL_{i}"
+        name = os.getenv(f"{prefix}_NAME")
+        if not name:
+            break
+        channels.append(ChatChannel(
+            name=name,
+            base_url=os.getenv(f"{prefix}_BASE_URL"),
+            api_key=os.getenv(f"{prefix}_API_KEY"),
+            model=os.getenv(f"{prefix}_{model_field}", default_model),
+        ))
+        i += 1
+    return tuple(channels)
+
+
+@lru_cache(maxsize=1)
+def get_flash_chat_channels() -> Tuple[ChatChannel, ...]:
+    channels = _load_split_chat_channels("FLASH", "gemini-2.0-flash")
+    if channels:
+        return channels
+    return _load_legacy_chat_channels("FLASH_MODEL", "gemini-2.0-flash")
+
+
+@lru_cache(maxsize=1)
+def get_pro_chat_channels() -> Tuple[ChatChannel, ...]:
+    channels = _load_split_chat_channels("PRO", "gemini-2.5-pro")
+    if channels:
+        return channels
+    return _load_legacy_chat_channels("PRO_MODEL", "gemini-2.5-pro")
+
+
+FLASH_CHAT_CHANNELS = get_flash_chat_channels()
+PRO_CHAT_CHANNELS = get_pro_chat_channels()
 
 
 def init_chat_channels():
     """启动时调用，加载渠道配置"""
-    global CHAT_CHANNELS
-    CHAT_CHANNELS = get_chat_channels()
-    print(f"✅ 已加载 {len(CHAT_CHANNELS)} 个Chat渠道")
-    for ch in CHAT_CHANNELS:
-        print(f"  - {ch.name}: {ch.base_url}")
+    global FLASH_CHAT_CHANNELS, PRO_CHAT_CHANNELS
+    _load_split_chat_channels.cache_clear()
+    _load_legacy_chat_channels.cache_clear()
+    get_flash_chat_channels.cache_clear()
+    get_pro_chat_channels.cache_clear()
+
+    FLASH_CHAT_CHANNELS = get_flash_chat_channels()
+    PRO_CHAT_CHANNELS = get_pro_chat_channels()
+
+    print(f"✅ 已加载 {len(FLASH_CHAT_CHANNELS)} 个Flash Chat渠道")
+    for ch in FLASH_CHAT_CHANNELS:
+        print(f"  - [Flash] {ch.name}: {ch.base_url}")
+
+    print(f"✅ 已加载 {len(PRO_CHAT_CHANNELS)} 个Pro Chat渠道")
+    for ch in PRO_CHAT_CHANNELS:
+        print(f"  - [Pro] {ch.name}: {ch.base_url}")
 
 
 def should_use_pro(image_data: Optional[str]) -> bool:
@@ -71,6 +118,11 @@ def should_use_pro(image_data: Optional[str]) -> bool:
     if estimated_bytes < 100 * 1024:
         return False
     return True
+
+
+def select_workspace_chat_model(agent_mode: bool) -> str:
+    """工作区聊天按 Agent 开关选择模型；审图仍走单独 Pro 接口。"""
+    return "pro" if agent_mode else "flash"
 
 
 def is_retryable_http_error(exception):
@@ -147,15 +199,15 @@ async def _call_openai_compat_json(
 
 async def chat_flash(messages: List[dict], json_mode: bool = False) -> str:
     """Flash 多渠道容灾调用"""
-    if not CHAT_CHANNELS:
+    if not FLASH_CHAT_CHANNELS:
         raise RuntimeError("未配置任何 Chat 渠道")
 
     last_error = None
-    for ch in CHAT_CHANNELS:
+    for ch in FLASH_CHAT_CHANNELS:
         try:
             print(f"[Flash] 尝试渠道: {ch.name}")
             caller = _call_openai_compat_json if json_mode else _call_openai_compat
-            result = await caller(ch, ch.flash_model, messages)
+            result = await caller(ch, ch.model, messages)
             print(f"[Flash] 渠道 {ch.name} 成功")
             return result
         except Exception as e:
@@ -168,14 +220,14 @@ async def chat_flash(messages: List[dict], json_mode: bool = False) -> str:
 
 async def chat_pro(messages: List[dict]) -> str:
     """Pro 多渠道容灾调用"""
-    if not CHAT_CHANNELS:
+    if not PRO_CHAT_CHANNELS:
         raise RuntimeError("未配置任何 Chat 渠道")
 
     last_error = None
-    for ch in CHAT_CHANNELS:
+    for ch in PRO_CHAT_CHANNELS:
         try:
             print(f"[Pro] 尝试渠道: {ch.name}")
-            result = await _call_openai_compat(ch, ch.pro_model, messages, timeout=60.0)
+            result = await _call_openai_compat(ch, ch.model, messages, timeout=60.0)
             print(f"[Pro] 渠道 {ch.name} 成功")
             return result
         except Exception as e:

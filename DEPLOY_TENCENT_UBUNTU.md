@@ -1,10 +1,5 @@
 # NeoVista 腾讯云 Ubuntu 部署指南
 
-## 当前部署源
-- GitHub 仓库：`git@github.com:wzhoudargon/Neovista.git`
-- 推荐部署分支：`deploy-snapshot`
-- 本文档以下命令默认以 `deploy-snapshot` 分支为准
-
 ## 系统要求
 - Ubuntu 20.04/22.04
 - **Python 3.8+**（项目使用 `Optional[X]` 语法，兼容 Python 3.8+）
@@ -59,19 +54,13 @@ sudo chmod 755 /var/lib/neovista
 ```bash
 # 创建 Web 目录
 sudo mkdir -p /var/www
-sudo chown ubuntu:ubuntu /var/www
 cd /var/www
 
-# 使用 ubuntu 用户克隆 deploy-snapshot 分支
-git clone --depth 1 --branch deploy-snapshot git@github.com:wzhoudargon/Neovista.git neovista
+# 克隆代码（替换为你的仓库地址）
+sudo git clone https://github.com/your-username/neovista.git neovista
 
-# 如果服务器没有配置 GitHub SSH Key，可以改用 HTTPS：
-# git clone --depth 1 --branch deploy-snapshot https://github.com/wzhoudargon/Neovista.git neovista
-
-# 确认当前代码分支
-cd /var/www/neovista
-git branch --show-current
-# 应该看到：deploy-snapshot
+# 修改权限（使用 ubuntu 用户）
+sudo chown -R ubuntu:ubuntu /var/www/neovista
 ```
 
 ---
@@ -96,6 +85,9 @@ pip install -r requirements.txt
 # 配置环境变量
 cp .env.example .env
 nano .env
+
+# 初始化账本相关表（首次部署付费系统时执行）
+python migrate_billing_schema.py
 ```
 
 **必须修改的环境变量：**
@@ -104,7 +96,37 @@ ADMIN_SECRET_KEY=生成一个随机密钥
 CORS_ALLOW_ORIGINS=https://neotest.site,https://www.neotest.site
 DATABASE_URL=sqlite:////var/lib/neovista/neovista.db
 API_CHANNEL_1_API_KEY=你的真实API密钥
+CHAT_FLASH_CHANNEL_1_API_KEY=你的聊天 Flash 渠道密钥
+CHAT_PRO_CHANNEL_1_API_KEY=你的聊天 Pro 渠道密钥
 ```
+
+**推荐同时检查的聊天渠道配置：**
+```env
+CHAT_FLASH_CHANNEL_1_NAME=Flash1
+CHAT_FLASH_CHANNEL_1_BASE_URL=https://your-chat-host.com
+CHAT_FLASH_CHANNEL_1_MODEL=gemini-3.1-flash-lite-preview
+
+CHAT_PRO_CHANNEL_1_NAME=Pro1
+CHAT_PRO_CHANNEL_1_BASE_URL=https://your-chat-host.com
+CHAT_PRO_CHANNEL_1_MODEL=gemini-3.1-pro-preview
+```
+
+**账单 / 限流相关建议变量：**
+```env
+CREDITS_PER_YUAN=100
+WELCOME_CREDITS=200
+REGISTER_IP_DAILY_LIMIT=3
+SEND_CODE_IP_HOURLY_LIMIT=10
+FREE_CHAT_DAILY_LIMIT=30
+FREE_AGENT_CHAT_DAILY_LIMIT=5
+```
+
+**变量说明：**
+- `API_CHANNEL_*`：最终生图渠道，按顺序容灾切换
+- `CHAT_FLASH_CHANNEL_*`：普通聊天渠道，工作区 `Agent` 关闭时走这里
+- `CHAT_PRO_CHANNEL_*`：深度分析/Agent 渠道，工作区 `Agent` 开启与审图都走这里
+- 工作区聊天规则：`Agent 关闭 -> Flash`，`Agent 开启 -> Pro`
+- 如果你的中转站要求特殊模型名，例如 `gemini-3.1-pro`，以中转站文档为准
 
 **设置 .env 文件权限（防止密钥泄露）：**
 ```bash
@@ -151,6 +173,11 @@ npm run build
 ls -lh dist/
 # 应该看到 index.html 和 assets/ 目录
 ```
+
+**工作区聊天开关语义：**
+- `Agent` 关闭：工作区聊天走 Flash 渠道
+- `Agent` 开启：工作区聊天走 Pro 渠道
+- 审图接口始终走 Pro 渠道
 
 ---
 
@@ -266,6 +293,84 @@ curl https://neotest.site/static/test.png
 
 # 浏览器访问
 # https://neotest.site
+```
+
+---
+
+## 11. 付费系统上线清单
+
+```bash
+# 1) 先备份生产数据库
+cp /var/lib/neovista/neovista.db /var/lib/neovista/neovista.db.bak.$(date +%Y%m%d-%H%M%S)
+
+# 2) 激活后端环境并执行账单迁移
+cd /var/www/neovista/backend
+source .venv/bin/activate
+python migrate_billing_schema.py   # 可重复执行，适合上线前再次确认
+
+# 3) 重启后端服务
+sudo systemctl restart neovista-api
+
+# 4) 查看启动日志，确认账单 / 限流配置已生效
+sudo journalctl -u neovista-api -n 80 --no-pager
+```
+
+上线前至少确认：
+- 已跑过 `migrate_billing_schema.py`
+- `.env` 已配置 `WELCOME_CREDITS`、聊天/生图渠道和限流变量
+- 已预先生成一批兑换码，再向用户开放充值入口
+
+内测环境建议再做一次最小冒烟：
+- 新注册账号是否收到 200 点欢迎积分
+- `/api/v1/billing/me` 是否能看到余额和流水
+- 管理员生成兑换码后，`admin_audit_logs` 是否有 `GENERATE_REDEMPTION_CODES`
+- 触发一次可控失败生图后，是否出现 `GENERATE_REFUND`
+- 同一用户再次正常生图时，余额是否继续正确扣减
+
+---
+
+## 12. 老用户余额回填建议
+
+首次上线账本系统时，如果数据库里已经存在老用户与历史 `credits` 余额，建议执行一次“只补流水、不清余额”的回填。
+
+原则：
+- 不清零老用户现有 `users.credits`
+- 为每个已有余额的用户补一条 `ADMIN_ADJUST` 或 `WELCOME_GRANT` 流水
+- `balance_after` 直接写回填时的现有余额
+
+推荐做法：
+1. 先备份数据库
+2. 在维护窗口内执行一次性脚本
+3. 脚本只为“当前有余额、但还没有账本记录”的用户补流水
+4. 回填后抽查 3-5 个账号，确认前端余额和账单历史一致
+
+---
+
+## 13. 兑换码与运营观察项
+
+### 生成兑换码
+
+系统已提供管理员接口 `POST /api/v1/billing/admin/redemption-codes`。  
+建议在正式开放充值前，先生成至少一批测试码和一批正式码。
+
+建议字段：
+- `credits`：单张兑换码到账算力点
+- `count`：一次生成多少张
+- `batch`：例如 `wechat-2026-04`
+- `expires_days`：MVP 阶段可先留空不过期
+
+### 上线后重点观察
+
+- `GENERATE_REFUND` 的数量是否异常升高
+- `429` 是否主要集中在 `send-code`、`register`、`workspace-chat`
+- 兑换码失败率是否升高
+- 活跃用户平均余额是否持续过低
+
+常用排查命令：
+```bash
+sudo journalctl -u neovista-api -f
+sqlite3 /var/lib/neovista/neovista.db "select type,status,count(*) from credit_transactions group by type,status;"
+sqlite3 /var/lib/neovista/neovista.db "select action,count(*) from usage_counters group by action;"
 ```
 
 ---

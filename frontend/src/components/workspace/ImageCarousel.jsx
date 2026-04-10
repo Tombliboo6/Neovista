@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { getAssetUrl } from '../../lib/url';
 
 export default function ImageCarousel({ images }) {
   const [currentIndex, setCurrentIndex] = useState(images && images.length > 2 ? images.length - 1 : 0);
@@ -10,7 +9,7 @@ export default function ImageCarousel({ images }) {
   }
 
   const getImageUrl = (path) => {
-    return getAssetUrl(path);
+    return path.startsWith('http') ? path : path;
   };
 
   // 如果刚好2张图，使用并排展示

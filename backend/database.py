@@ -8,12 +8,16 @@ import os
 # 生产环境建议：sqlite:////var/lib/neovista/neovista.db（独立数据目录）
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./neovista.db")
 
-# SQLite 需要特殊参数
-connect_args = {}
-if DATABASE_URL.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
+def get_connect_args(database_url: str):
+    if database_url.startswith("sqlite"):
+        return {"check_same_thread": False}
+    return {}
 
-engine = create_engine(DATABASE_URL, connect_args=connect_args)
+def create_db_engine(database_url: str = None):
+    resolved_url = database_url or DATABASE_URL
+    return create_engine(resolved_url, connect_args=get_connect_args(resolved_url))
+
+engine = create_db_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

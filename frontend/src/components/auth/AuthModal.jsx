@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import toast from 'react-hot-toast';
 import { useAppStore } from '../../store/useAppStore';
-import { getApiUrl } from '../../lib/url';
+
+const API_BASE = '/api';
 
 export default function AuthModal({ isOpen, onClose }) {
   const [mode, setMode] = useState('login');
@@ -9,7 +11,7 @@ export default function AuthModal({ isOpen, onClose }) {
   const [code, setCode] = useState('');
   const [countdown, setCountdown] = useState(0);
   const [error, setError] = useState('');
-  const { setToken, setUser } = useAppStore();
+  const { setToken, setUser, refreshBilling } = useAppStore();
 
   if (!isOpen) return null;
 
@@ -19,12 +21,13 @@ export default function AuthModal({ isOpen, onClose }) {
       return;
     }
     try {
-      const res = await fetch(getApiUrl('/v1/auth/send-code'), {
+      const res = await fetch(`${API_BASE}/v1/auth/send-code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
       });
-      if (!res.ok) throw new Error('发送失败');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || '发送失败');
       setCountdown(60);
       const timer = setInterval(() => {
         setCountdown(prev => {
@@ -57,8 +60,8 @@ export default function AuthModal({ isOpen, onClose }) {
 
     try {
       const endpoint = mode === 'login'
-        ? getApiUrl('/v1/auth/login')
-        : getApiUrl('/v1/auth/register');
+        ? `${API_BASE}/v1/auth/login`
+        : `${API_BASE}/v1/auth/register`;
 
       const body = mode === 'login'
         ? { email, password }
@@ -75,6 +78,10 @@ export default function AuthModal({ isOpen, onClose }) {
 
       setToken(data.access_token);
       setUser(data.user);
+      refreshBilling().catch(() => null);
+      if (mode === 'register') {
+        toast.success(`注册成功，已获得 ${data.user?.credits ?? 0} 算力点`);
+      }
       onClose();
     } catch (err) {
       setError(err.message);
@@ -113,23 +120,28 @@ export default function AuthModal({ isOpen, onClose }) {
           />
 
           {mode === 'register' && (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="验证码"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                className="flex-1 px-3 py-2 border rounded"
-                required
-              />
-              <button
-                type="button"
-                onClick={sendCode}
-                disabled={countdown > 0}
-                className="px-4 py-2 bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50"
-              >
-                {countdown > 0 ? `${countdown}s` : '获取验证码'}
-              </button>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="验证码"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  className="flex-1 px-3 py-2 border rounded"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={sendCode}
+                  disabled={countdown > 0}
+                  className="px-4 py-2 bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50"
+                >
+                  {countdown > 0 ? `${countdown}s` : '获取验证码'}
+                </button>
+              </div>
+              <div className="rounded bg-indigo-50 px-3 py-2 text-xs text-indigo-600">
+                注册成功后系统会自动赠送 200 算力点，可直接用于首次测试和出图。
+              </div>
             </div>
           )}
 

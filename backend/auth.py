@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import exc
 from pydantic import BaseModel, Field
@@ -9,6 +9,8 @@ import random
 import os
 
 from database import get_db
+from billing_service import grant_welcome_credits
+from rate_limit_service import check_and_increment_ip_limit, extract_client_ip
 from models import User, EmailVerification
 from email_utils import send_verification_email
 
@@ -19,6 +21,8 @@ if not SECRET_KEY:
     raise RuntimeError("JWT_SECRET_KEY 环境变量未设置，请在 .env 中配置")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7天
+SEND_CODE_IP_HOURLY_LIMIT = int(os.getenv("SEND_CODE_IP_HOURLY_LIMIT", "10"))
+REGISTER_IP_DAILY_LIMIT = int(os.getenv("REGISTER_IP_DAILY_LIMIT", "3"))
 
 class SendCodeRequest(BaseModel):
     email: str
@@ -68,7 +72,13 @@ def get_current_user(authorization: str = Header(None), db: Session = Depends(ge
     return user
 
 @router.post("/send-code")
-async def send_code(request: SendCodeRequest, db: Session = Depends(get_db)):
+async def send_code(request: SendCodeRequest, http_request: Request, db: Session = Depends(get_db)):
+    client_ip = extract_client_ip(http_request)
+    try:
+        check_and_increment_ip_limit(db, client_ip, "send_code", SEND_CODE_IP_HOURLY_LIMIT, period="hour")
+    except ValueError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+
     code = str(random.randint(100000, 999999))
     expires_at = datetime.now() + timedelta(minutes=5)
 
@@ -93,7 +103,7 @@ async def send_code(request: SendCodeRequest, db: Session = Depends(get_db)):
     return {"message": "验证码已发送"}
 
 @router.post("/register")
-async def register(request: RegisterRequest, db: Session = Depends(get_db)):
+async def register(request: RegisterRequest, http_request: Request, db: Session = Depends(get_db)):
     if len(request.password) < 8 or len(request.password) > 24:
         raise HTTPException(status_code=400, detail="密码长度必须为8-24位")
 
@@ -102,6 +112,12 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
 
     if not any(c.isalpha() for c in request.password):
         raise HTTPException(status_code=400, detail="密码必须包含至少一个字母")
+
+    client_ip = extract_client_ip(http_request)
+    try:
+        check_and_increment_ip_limit(db, client_ip, "register", REGISTER_IP_DAILY_LIMIT, period="day")
+    except ValueError as e:
+        raise HTTPException(status_code=429, detail=str(e))
 
     try:
         existing_user = db.query(User).filter(User.email == request.email).first()
@@ -121,9 +137,11 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
         user = User(
             email=request.email,
             hashed_password=hash_password(request.password),
-            credits=5
+            credits=0
         )
         db.add(user)
+        db.flush()
+        grant_welcome_credits(db, user, source="register")
         db.commit()
         db.refresh(user)
     except HTTPException:

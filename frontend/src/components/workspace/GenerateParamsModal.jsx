@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 
+const RESOLUTION_PRICING = {
+  '1K': 20,
+  '2K': 50,
+  '4K': 80,
+};
+
 export default function GenerateParamsModal({ isOpen, onClose, onConfirm }) {
   const [resolution, setResolution] = useState('2K');
   const [numImages, setNumImages] = useState(1);
@@ -11,6 +17,8 @@ export default function GenerateParamsModal({ isOpen, onClose, onConfirm }) {
     onConfirm({ resolution, numImages });
     onClose();
   };
+
+  const totalCost = RESOLUTION_PRICING[resolution] * numImages;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -43,7 +51,10 @@ export default function GenerateParamsModal({ isOpen, onClose, onConfirm }) {
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
-                  {res}
+                  <div className="font-medium">{res}</div>
+                  <div className={`text-[11px] ${resolution === res ? 'text-white/80' : 'text-gray-500'}`}>
+                    {RESOLUTION_PRICING[res]} 点
+                  </div>
                 </button>
               ))}
             </div>
@@ -66,6 +77,14 @@ export default function GenerateParamsModal({ isOpen, onClose, onConfirm }) {
               <span>2</span>
               <span>3</span>
               <span>4</span>
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2">
+            <div className="text-sm text-gray-700">预计扣费</div>
+            <div className="text-lg font-semibold text-blue-700">{totalCost} 点</div>
+            <div className="text-xs text-gray-500 mt-1">
+              计费规则：分辨率单价 × 生图数量
             </div>
           </div>
         </div>

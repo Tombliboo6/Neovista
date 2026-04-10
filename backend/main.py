@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi import FastAPI, HTTPException, Header, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -19,11 +19,17 @@ from PIL import Image
 
 load_dotenv()
 
+from billing_service import (
+    capture_generation_hold,
+    create_generation_hold,
+    refund_generation_hold,
+)
+from billing_router import router as billing_router
 from database import engine, Base, get_db
 from auth import router as auth_router, get_current_user
 from models import User, ChatSession
-from llm_service import init_chat_channels, chat_flash, chat_pro, should_use_pro, CHAT_CHANNELS
-from upstream_errors import format_upstream_error, map_upstream_failure_status
+from llm_service import init_chat_channels, chat_flash, chat_pro, select_workspace_chat_model, PRO_CHAT_CHANNELS
+from rate_limit_service import check_and_increment_ip_limit, extract_client_ip
 
 class APIChannel(BaseModel):
     name: str
@@ -61,6 +67,7 @@ app.add_middleware(
 
 # 挂载鉴权路由
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(billing_router, prefix="/api/v1/billing", tags=["billing"])
 
 # 多渠道配置
 @lru_cache(maxsize=1)
@@ -94,12 +101,15 @@ DEEPSEEK_CONFIG = {
 
 # 初始化 Chat 渠道（Flash / Pro）
 init_chat_channels()
+FREE_CHAT_DAILY_LIMIT = int(os.getenv("FREE_CHAT_DAILY_LIMIT", "30"))
+FREE_AGENT_CHAT_DAILY_LIMIT = int(os.getenv("FREE_AGENT_CHAT_DAILY_LIMIT", "5"))
 
 class GenerateRequest(BaseModel):
     template_id: Optional[str] = None
     user_params: Optional[str] = None
     image_data: Optional[str] = None
     custom_prompt_structure: Optional[dict] = None
+    request_id: Optional[str] = None
     resolution: Optional[str] = "2K"  # 新增：1K/2K/4K
     aspect_ratio: Optional[str] = "1:1"  # 新增：生图比例
     num_images: Optional[int] = 1
@@ -107,6 +117,9 @@ class GenerateRequest(BaseModel):
 class GenerateResponse(BaseModel):
     image_url: str
     timestamp: int
+    charged_credits: int
+    remaining_credits: int
+    request_id: str
 
 class Template(BaseModel):
     id: str
@@ -136,6 +149,7 @@ class WorkspaceChatMessage(BaseModel):
 class WorkspaceChatRequest(BaseModel):
     messages: List[WorkspaceChatMessage]
     image_data: Optional[str] = None
+    agent_mode: bool = False
     session_id: Optional[str] = None
 
 class WorkspaceChatResponse(BaseModel):
@@ -153,12 +167,16 @@ class GenerateDiagramRequest(BaseModel):
     base_image: Optional[str] = None
     num_images: Optional[int] = 1
     template_id: Optional[str] = None
+    request_id: Optional[str] = None
     resolution: Optional[str] = "2K"
     aspect_ratio: Optional[str] = "1:1"
 
 class GenerateDiagramResponse(BaseModel):
     image_url: str
     timestamp: int
+    charged_credits: int
+    remaining_credits: int
+    request_id: str
 
 class AuditDiagramRequest(BaseModel):
     session_id: Optional[str] = None
@@ -208,6 +226,181 @@ def get_dimensions_from_resolution_and_ratio(resolution: str, aspect_ratio: str)
 
     return (width, height)
 
+
+class UpstreamGenerationError(Exception):
+    def __init__(self, *, last_error, error_code: str, error_message: str):
+        super().__init__(error_message)
+        self.last_error = last_error
+        self.error_code = error_code
+        self.error_message = error_message
+
+
+def _extract_generated_image(data: dict) -> Optional[str]:
+    candidates = data.get("candidates") or []
+    if not candidates:
+        return None
+
+    content = candidates[0].get("content") or {}
+    for part in content.get("parts") or []:
+        inline_data = part.get("inlineData") or {}
+        image_data = inline_data.get("data")
+        if image_data:
+            return image_data
+    return None
+
+
+def _create_generation_hold_or_raise(
+    db: Session,
+    current_user: User,
+    *,
+    resolution: str,
+    num_images: int,
+    request_id: str,
+    idempotency_key: str,
+):
+    try:
+        hold_txn = create_generation_hold(
+            db,
+            current_user,
+            resolution=resolution,
+            num_images=num_images,
+            request_id=request_id,
+            idempotency_key=idempotency_key,
+        )
+        db.commit()
+        db.refresh(current_user)
+        return hold_txn
+    except ValueError:
+        db.rollback()
+        raise HTTPException(status_code=402, detail="积分不足，请充值")
+    except Exception as e:
+        db.rollback()
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"创建扣费预占失败: {str(e)}")
+
+
+async def _request_image_from_channels(
+    *,
+    parts: List[dict],
+    resolution: str,
+    aspect_ratio: str,
+    payload_log: str,
+) -> Tuple[str, str]:
+    width, height = get_dimensions_from_resolution_and_ratio(resolution, aspect_ratio)
+    print(payload_log.format(width=width, height=height))
+
+    last_error = None
+    error_code = "UPSTREAM_FAILED"
+    error_message = "所有API渠道均失败"
+
+    for channel in API_CHANNELS:
+        try:
+            print(f"尝试渠道: {channel.name} (分辨率: {resolution}, 比例: {aspect_ratio}, 尺寸: {width}x{height})")
+
+            url = f"{channel.base_url}/v1/models/{channel.model}:generateContent"
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {channel.api_key}"
+            }
+            payload = {
+                "contents": [{"role": "user", "parts": parts}],
+                "generationConfig": {
+                    "responseModalities": ["IMAGE"],
+                    "imageConfig": {"aspectRatio": aspect_ratio}
+                }
+            }
+
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+
+            print(f"渠道 {channel.name} 成功")
+            image_data = _extract_generated_image(data)
+            if image_data:
+                return image_data, channel.name
+
+            error_code = "UPSTREAM_EMPTY_IMAGE"
+            error_message = f"渠道 {channel.name} 返回结果中缺少图片数据"
+        except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
+            error_msg = f"渠道 {channel.name} 失败: {type(e).__name__}"
+            if isinstance(e, httpx.HTTPStatusError):
+                error_msg += f" {e.response.status_code}"
+                error_code = f"UPSTREAM_HTTP_{e.response.status_code}"
+            else:
+                error_code = "UPSTREAM_TIMEOUT"
+            error_message = error_msg
+            print(f"⚠️  {error_msg}")
+            last_error = e
+            continue
+        except Exception as e:
+            print(f"⚠️  渠道 {channel.name} 异常: {str(e)}")
+            error_code = "UPSTREAM_EXCEPTION"
+            error_message = str(e)
+            last_error = e
+            continue
+
+    raise UpstreamGenerationError(
+        last_error=last_error,
+        error_code=error_code,
+        error_message=error_message,
+    )
+
+
+def _refund_generation_hold_safely(
+    db: Session,
+    hold_txn,
+    *,
+    error_code: str,
+    error_message: str,
+):
+    if hold_txn is None or hold_txn.status != "PENDING":
+        return
+
+    try:
+        refund_generation_hold(
+            db,
+            hold_txn,
+            error_code=error_code,
+            error_message=error_message,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        traceback.print_exc()
+
+
+def _build_generation_error(last_error, *, prefix: str) -> HTTPException:
+    if isinstance(last_error, httpx.TimeoutException):
+        return HTTPException(status_code=504, detail="生成超时，积分已退回，请稍后重试")
+    if isinstance(last_error, httpx.HTTPStatusError) and last_error.response.status_code in (502, 503, 504):
+        return HTTPException(status_code=503, detail="生成服务暂时不可用，积分已退回，请稍后重试")
+    if last_error is None:
+        return HTTPException(status_code=500, detail=f"{prefix}，积分已退回")
+    return HTTPException(status_code=500, detail=f"{prefix}，积分已退回: {str(last_error)}")
+
+
+def _build_generation_success_response(
+    response_model,
+    *,
+    db: Session,
+    current_user: User,
+    hold_txn,
+    request_id: str,
+    image_data: str,
+    provider_name: str,
+):
+    capture_generation_hold(db, hold_txn, provider_meta={"channel": provider_name})
+    db.commit()
+    db.refresh(current_user)
+    return response_model(
+        image_url=f"data:image/png;base64,{image_data}",
+        timestamp=int(datetime.utcnow().timestamp() * 1000),
+        charged_credits=abs(hold_txn.amount),
+        remaining_credits=current_user.credits,
+        request_id=request_id,
+    )
+
 DEFAULT_AUDIT_RESPONSE = {
     "is_pass": False,
     "positive_feedback": "图片已收到，但审核服务暂时不可用",
@@ -220,39 +413,13 @@ DEFAULT_AUDIT_RESPONSE = {
     "manual_fix_suggestions": ["请联系技术支持"]
 }
 
-GENERATE_UPSTREAM_TIMEOUT_SECONDS = 120.0
-
 @app.get("/api/v1/templates")
-async def get_templates(limit: Optional[int] = None):
+async def get_templates():
     """获取所有 Prompt 模版"""
     try:
         with open('templates_v2.json', 'r', encoding='utf-8') as f:
             templates = json.load(f)
-
-        safe_templates = []
-        for template in templates:
-            images = template.get('images', [])
-            summary_text = template.get('tips') or template.get('display_text', '')
-            safe_templates.append({
-                'id': template['id'],
-                'title': template['title'],
-                'category_id': template.get('category_id', ''),
-                'category_name': template.get('category_name', ''),
-                'subcategory_id': template.get('subcategory_id', ''),
-                'subcategory_name': template.get('subcategory_name', ''),
-                'tips': template.get('tips', ''),
-                'images': images[-1:] if images else [],
-                'is_i2i': template.get('is_i2i', False),
-                'is_multi_step': template.get('is_multi_step', False),
-                'display_text': summary_text[:160],
-                'likes': template.get('likes', 0),
-                'uses': template.get('uses', 0),
-            })
-
-        if limit is not None and limit >= 0:
-            safe_templates = safe_templates[:limit]
-
-        return {"templates": safe_templates, "total": len(templates)}
+        return {"templates": templates, "total": len(templates)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -337,9 +504,12 @@ def _keyword_match(query: str, templates: list):
     return matched_templates, reply_text
 
 @app.post("/api/v1/agent/chat")
-async def agent_chat(request: AgentChatRequest, db: Session = Depends(get_db)):
+async def agent_chat(request: AgentChatRequest, http_request: Request, db: Session = Depends(get_db)):
     """智能接待Agent - 多轮对话 + 参数提取 MVP"""
     try:
+        client_ip = extract_client_ip(http_request)
+        check_and_increment_ip_limit(db, client_ip, "agent_chat", FREE_AGENT_CHAT_DAILY_LIMIT, period="day")
+
         # 1. 会话管理
         if request.session_id:
             session = db.query(ChatSession).filter(ChatSession.session_id == request.session_id).first()
@@ -435,6 +605,8 @@ JSON输出：
             collected_params=json.loads(session.collected_params or '{}')
         )
 
+    except ValueError as e:
+        raise HTTPException(status_code=429, detail=str(e))
     except Exception as e:
         import traceback
         print(f"❌ agent_chat 错误: {e}")
@@ -450,9 +622,12 @@ class DirectChatResponse(BaseModel):
     reply: str
 
 @app.post("/api/v1/direct-chat")
-async def direct_chat(request: DirectChatRequest):
+async def direct_chat(request: DirectChatRequest, http_request: Request, db: Session = Depends(get_db)):
     """普通对话接口 - 非 Agent，不涉及参数提炼或模板推荐"""
     try:
+        client_ip = extract_client_ip(http_request)
+        check_and_increment_ip_limit(db, client_ip, "direct_chat", FREE_CHAT_DAILY_LIMIT, period="day")
+
         system_prompt = """你是 NeoVista 的友好助手。你可以：
 - 回答设计相关的问题（建筑、景观、规划、室内、产品等）
 - 进行日常对话和闲聊
@@ -470,14 +645,19 @@ async def direct_chat(request: DirectChatRequest):
 
         return DirectChatResponse(reply=reply_raw)
 
+    except ValueError as e:
+        raise HTTPException(status_code=429, detail=str(e))
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/v1/agent/workspace-chat")
-async def workspace_chat(request: WorkspaceChatRequest, db: Session = Depends(get_db)):
+async def workspace_chat(request: WorkspaceChatRequest, http_request: Request, db: Session = Depends(get_db)):
     """画布对话Agent - Flash参数拆解 / Pro复杂图片分析"""
     try:
+        client_ip = extract_client_ip(http_request)
+        check_and_increment_ip_limit(db, client_ip, "workspace_chat", FREE_AGENT_CHAT_DAILY_LIMIT, period="day")
+
         with open('templates_v2.json', 'r', encoding='utf-8') as f:
             templates = json.load(f)
 
@@ -530,11 +710,10 @@ async def workspace_chat(request: WorkspaceChatRequest, db: Session = Depends(ge
             if m.role in ("user", "assistant"):
                 messages.append({"role": m.role, "content": m.content})
 
-        # 路由：Pro or Flash
-        use_pro = should_use_pro(request.image_data)
-        model_used = "pro" if use_pro else "flash"
+        # 工作区聊天按 Agent 模式显式选择渠道；复杂视觉审图由单独接口承担
+        model_used = select_workspace_chat_model(request.agent_mode)
 
-        if use_pro:
+        if model_used == "pro":
             reply_raw = await chat_pro(messages)
         else:
             reply_raw = await chat_flash(messages, json_mode=True)
@@ -595,9 +774,9 @@ async def generate_image(
     print(f"custom_prompt_structure type: {type(request.custom_prompt_structure)}")
     print("="*60 + "\n")
 
-    # 检查积分（本地开发环境暂时禁用）
-    # if current_user.credits <= 0:
-    #     raise HTTPException(status_code=402, detail="积分不足，请充值")
+    request_id = request.request_id or str(uuid.uuid4())
+    idempotency_key = f"generate:{current_user.id}:{request_id}"
+    hold_txn = None
 
     # 根据 template_id 查询模版（支持 null）
     try:
@@ -673,71 +852,52 @@ async def generate_image(
             }
         })
 
-    # 计算实际尺寸
-    width, height = get_dimensions_from_resolution_and_ratio(request.resolution, request.aspect_ratio)
-
-    print(f"[GENERATE PAYLOAD] template_id={request.template_id}, resolution={request.resolution}, aspect_ratio={request.aspect_ratio}, dimensions={width}x{height}, has_image={bool(request.image_data)}")
-
-    last_error = None
-    for channel in API_CHANNELS:
-        try:
-            print(f"尝试渠道: {channel.name} (分辨率: {request.resolution}, 比例: {request.aspect_ratio}, 尺寸: {width}x{height})")
-
-            url = f"{channel.base_url}/v1/models/{channel.model}:generateContent"
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {channel.api_key}"
-            }
-            payload = {
-                "contents": [{"role": "user", "parts": parts}],
-                "generationConfig": {
-                    "responseModalities": ["IMAGE"],
-                    "imageConfig": {"aspectRatio": request.aspect_ratio}
-                }
-            }
-
-            async with httpx.AsyncClient(timeout=GENERATE_UPSTREAM_TIMEOUT_SECONDS) as client:
-                response = await client.post(url, json=payload, headers=headers)
-                response.raise_for_status()
-                data = response.json()
-
-            print(f"渠道 {channel.name} 成功")
-
-            # 解析响应
-            if "candidates" in data and len(data["candidates"]) > 0:
-                parts_response = data["candidates"][0]["content"]["parts"]
-                image_data = None
-                for part in parts_response:
-                    if "inlineData" in part:
-                        image_data = part["inlineData"]["data"]
-                        break
-
-                if image_data:
-                    import time
-
-                    # 扣减积分（本地开发环境暂时禁用）
-                    # current_user.credits -= 1
-                    # db.commit()
-
-                    return GenerateResponse(
-                        image_url=f"data:image/png;base64,{image_data}",
-                        timestamp=int(time.time() * 1000)
-                    )
-
-        except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
-            print(f"⚠️  {format_upstream_error(channel.name, e)}")
-            last_error = e
-            continue
-        except Exception as e:
-            print(f"⚠️  渠道 {channel.name} 异常: {str(e)}")
-            last_error = e
-            continue
-
-    # 所有渠道均失败
-    raise HTTPException(
-        status_code=map_upstream_failure_status(last_error),
-        detail=f"所有API渠道均失败: {format_upstream_error('最后渠道', last_error)}"
+    hold_txn = _create_generation_hold_or_raise(
+        db,
+        current_user,
+        resolution=request.resolution,
+        num_images=request.num_images or 1,
+        request_id=request_id,
+        idempotency_key=idempotency_key,
     )
+
+    try:
+        image_data, provider_name = await _request_image_from_channels(
+            parts=parts,
+            resolution=request.resolution,
+            aspect_ratio=request.aspect_ratio,
+            payload_log=(
+                f"[GENERATE PAYLOAD] template_id={request.template_id}, "
+                f"resolution={request.resolution}, aspect_ratio={request.aspect_ratio}, "
+                f"dimensions={{width}}x{{height}}, has_image={bool(request.image_data)}"
+            ),
+        )
+        return _build_generation_success_response(
+            GenerateResponse,
+            db=db,
+            current_user=current_user,
+            hold_txn=hold_txn,
+            request_id=request_id,
+            image_data=image_data,
+            provider_name=provider_name,
+        )
+    except UpstreamGenerationError as e:
+        _refund_generation_hold_safely(
+            db,
+            hold_txn,
+            error_code=e.error_code,
+            error_message=e.error_message,
+        )
+        raise _build_generation_error(e.last_error, prefix="所有API渠道均失败")
+    except Exception as e:
+        _refund_generation_hold_safely(
+            db,
+            hold_txn,
+            error_code="INTERNAL_EXCEPTION",
+            error_message=str(e),
+        )
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"生成失败，积分已退回: {str(e)}")
 
 @app.get("/")
 async def root():
@@ -761,6 +921,8 @@ async def generate_diagram(
     print("🎨 generate_diagram 接口被调用")
     print(f"session_id: {request.session_id}")
     print("=" * 50)
+    request_id = request.request_id or str(uuid.uuid4())
+    idempotency_key = f"generate-diagram:{current_user.id}:{request_id}"
     try:
         # 1. 查询会话
         session = db.query(ChatSession).filter(ChatSession.session_id == request.session_id).first()
@@ -834,58 +996,52 @@ async def generate_diagram(
                 }
             })
 
-        # 6. 调用 Google Imagen API
-        # 计算实际尺寸
-        width, height = get_dimensions_from_resolution_and_ratio(request.resolution, request.aspect_ratio)
-        print(f"[GENERATE_DIAGRAM PAYLOAD] template_id={session.template_id}, resolution={request.resolution}, aspect_ratio={request.aspect_ratio}, dimensions={width}x{height}")
+        hold_txn = _create_generation_hold_or_raise(
+            db,
+            current_user,
+            resolution=request.resolution,
+            num_images=request.num_images or 1,
+            request_id=request_id,
+            idempotency_key=idempotency_key,
+        )
 
-        last_error = None
-        for channel in API_CHANNELS:
-            try:
-                url = f"{channel.base_url}/v1/models/{channel.model}:generateContent"
-                headers = {
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {channel.api_key}"
-                }
-                payload = {
-                    "contents": [{"role": "user", "parts": parts}],
-                    "generationConfig": {
-                        "responseModalities": ["IMAGE"],
-                        "imageConfig": {"aspectRatio": request.aspect_ratio}
-                    }
-                }
-
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    response = await client.post(url, json=payload, headers=headers)
-                    response.raise_for_status()
-                    data = response.json()
-
-                # 解析响应
-                if "candidates" in data and len(data["candidates"]) > 0:
-                    parts_response = data["candidates"][0]["content"]["parts"]
-                    image_data = None
-                    for part in parts_response:
-                        if "inlineData" in part:
-                            image_data = part["inlineData"]["data"]
-                            break
-
-                    if image_data:
-                        import time
-                        return GenerateDiagramResponse(
-                            image_url=f"data:image/png;base64,{image_data}",
-                            timestamp=int(time.time() * 1000)
-                        )
-
-            except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
-                print(f"渠道 {channel.name} 失败: {e}")
-                last_error = e
-                continue
-            except Exception as e:
-                print(f"渠道 {channel.name} 异常: {e}")
-                last_error = e
-                continue
-
-        raise HTTPException(status_code=500, detail=f"所有渠道失败: {str(last_error)}")
+        try:
+            image_data, provider_name = await _request_image_from_channels(
+                parts=parts,
+                resolution=request.resolution,
+                aspect_ratio=request.aspect_ratio,
+                payload_log=(
+                    f"[GENERATE_DIAGRAM PAYLOAD] template_id={session.template_id}, "
+                    f"resolution={request.resolution}, aspect_ratio={request.aspect_ratio}, "
+                    "dimensions={width}x{height}"
+                ),
+            )
+            return _build_generation_success_response(
+                GenerateDiagramResponse,
+                db=db,
+                current_user=current_user,
+                hold_txn=hold_txn,
+                request_id=request_id,
+                image_data=image_data,
+                provider_name=provider_name,
+            )
+        except UpstreamGenerationError as e:
+            _refund_generation_hold_safely(
+                db,
+                hold_txn,
+                error_code=e.error_code,
+                error_message=e.error_message,
+            )
+            raise _build_generation_error(e.last_error, prefix="所有渠道失败")
+        except Exception as e:
+            _refund_generation_hold_safely(
+                db,
+                hold_txn,
+                error_code="INTERNAL_EXCEPTION",
+                error_message=str(e),
+            )
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"生成失败，积分已退回: {str(e)}")
 
     except HTTPException:
         raise
@@ -972,7 +1128,7 @@ async def audit_diagram(
 - 输出必须是纯 JSON，不要包含任何其他文字"""
 
         # 5. 调用 Chat 渠道的 Pro 模型进行视觉审图
-        for ch in CHAT_CHANNELS:
+        for ch in PRO_CHAT_CHANNELS:
             try:
                 print(f"[审图] 尝试渠道: {ch.name}")
 
@@ -991,7 +1147,7 @@ async def audit_diagram(
                 }
 
                 payload = {
-                    "model": ch.pro_model,
+                    "model": ch.model,
                     "stream": False,
                     "messages": [
                         {

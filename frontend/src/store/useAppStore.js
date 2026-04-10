@@ -1,8 +1,11 @@
 import { create } from 'zustand';
-import { getApiUrl } from '../lib/url';
-import { readApiResponse, getApiErrorMessage } from '../lib/api-response';
 import * as fabric from 'fabric';
 import toast from 'react-hot-toast';
+import {
+  buildGeneratedImageMessage,
+  getGeneratedImageUrlOrThrow,
+  summarizeGeneratedImageUrl,
+} from './generatedImageUtils.js';
 
 // API 基础路径（开发和生产都用相对路径，Vite proxy 处理）
 const API_BASE = '/api';
@@ -130,9 +133,49 @@ const prepareMessagesForAPI = (messages, maxMessages = 10) => {
   }));
 };
 
+const createClientRequestId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const addGeneratedImageToCanvas = async ({
+  fabricInstance,
+  imageUrl,
+  setProgrammaticUpdate,
+}) => {
+  if (!fabricInstance || !imageUrl) {
+    return;
+  }
+
+  setProgrammaticUpdate(true);
+  try {
+    const img = await fabric.FabricImage.fromURL(imageUrl);
+    const scale = Math.min(
+      fabricInstance.width * 0.6 / img.width,
+      fabricInstance.height * 0.6 / img.height
+    );
+    img.scale(scale);
+    fabricInstance.centerObject(img);
+    fabricInstance.add(img);
+    fabricInstance.setActiveObject(img);
+    fabricInstance.renderAll();
+  } catch (error) {
+    console.error('Failed to render generated image on canvas:', {
+      error,
+      image: summarizeGeneratedImageUrl(imageUrl),
+    });
+    toast.error('图片已生成，但画布加载失败，请先在对话区查看结果');
+  } finally {
+    setProgrammaticUpdate(false);
+  }
+};
+
 export const useAppStore = create((set, get) => ({
   // 用户认证状态
   user: null,
+  billingSummary: null,
   token: localStorage.getItem('token') || null,
   setUser: (user) => set({ user }),
   setToken: (token) => {
@@ -145,7 +188,7 @@ export const useAppStore = create((set, get) => ({
   },
   logout: () => {
     localStorage.removeItem('token');
-    set({ user: null, token: null });
+    set({ user: null, token: null, billingSummary: null });
   },
 
   activeSkill: null,
@@ -191,6 +234,7 @@ export const useAppStore = create((set, get) => ({
         body: JSON.stringify({
           messages: apiMessages,
           session_id: homeSessionId,
+          agent_mode: true,
           template_id: activeSkill
         }),
       });
@@ -248,6 +292,8 @@ export const useAppStore = create((set, get) => ({
 
   showGenerateModal: false,
   setShowGenerateModal: (show) => set({ showGenerateModal: show }),
+  showRedeemModal: false,
+  setShowRedeemModal: (show) => set({ showRedeemModal: show }),
 
   chatInput: '',
   setChatInput: (input) => set({ chatInput: input }),
@@ -287,6 +333,64 @@ export const useAppStore = create((set, get) => ({
   setAspectRatio: (ratio) => set({ aspectRatio: ratio }),
   setNumImages: (num) => set({ numImages: num }),
   setSelectedModel: (model) => set({ selectedModel: model }),
+
+  refreshBilling: async () => {
+    const { token, user } = get();
+    if (!token) {
+      set({ billingSummary: null });
+      return null;
+    }
+
+    const response = await fetch(`${API_BASE}/v1/billing/me`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || '刷新账单信息失败');
+    }
+
+    set((state) => ({
+      billingSummary: data,
+      user: user && state.user ? { ...state.user, credits: data.credits } : state.user,
+    }));
+
+    return data;
+  },
+
+  redeemCode: async (code) => {
+    const { token, user, setUser, refreshBilling } = get();
+    if (!token) {
+      throw new Error('请先登录');
+    }
+
+    const response = await fetch(`${API_BASE}/v1/billing/redeem`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ code }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || '兑换失败');
+    }
+
+    const summary = await refreshBilling().catch(() => null);
+
+    if (!summary && user) {
+      setUser({ ...user, credits: data.credits });
+    }
+
+    return {
+      ...data,
+      credits: summary?.credits ?? data.credits
+    };
+  },
 
   addHomeChatMessage: (role, content) => {
     const { homeChatMessages } = get();
@@ -388,7 +492,7 @@ export const useAppStore = create((set, get) => ({
   },
 
   workspaceChat: async (message, imageData) => {
-    const { homeSessionId, workspaceChatMessages, addChatMessage } = get();
+    const { homeSessionId, workspaceChatMessages, addChatMessage, agentMode } = get();
 
     // 追加用户消息
     const userMsg = { role: 'user', content: message };
@@ -406,6 +510,7 @@ export const useAppStore = create((set, get) => ({
         body: JSON.stringify({
           messages: apiMessages,
           image_data: imageData || null,
+          agent_mode: agentMode,
           session_id: homeSessionId
         }),
       });
@@ -439,7 +544,7 @@ export const useAppStore = create((set, get) => ({
   },
 
   confirmGenerate: async () => {
-    const { homeSessionId, token, suggestedTemplateId, addChatMessage, setShowAuthModal, fabricInstance, setProgrammaticUpdate, numImages, activeSkill, resolution, aspectRatio } = get();
+    const { homeSessionId, token, suggestedTemplateId, addChatMessage, setShowAuthModal, fabricInstance, setProgrammaticUpdate, numImages, activeSkill, resolution, aspectRatio, user, setUser, refreshBilling } = get();
 
     if (!homeSessionId) {
       addChatMessage('assistant', '会话ID丢失，请刷新页面重试');
@@ -505,6 +610,7 @@ export const useAppStore = create((set, get) => ({
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
+          request_id: createClientRequestId(),
           session_id: homeSessionId,
           base_image,
           num_images: numImages,
@@ -523,18 +629,19 @@ export const useAppStore = create((set, get) => ({
         return;
       }
 
-      alert('生图成功！检查代码是否更新');
-      console.log('生图返回数据:', data);
-      console.log('image_url:', data.image_url);
+      const imageUrl = getGeneratedImageUrlOrThrow(data);
+      console.log('生图返回数据:', {
+        ...data,
+        image_url: summarizeGeneratedImageUrl(imageUrl),
+      });
 
       // 添加到 workspaceChatMessages（包含审图按钮和模板溯源）
       const { workspaceChatMessages, activeTemplateName } = get();
-      const newMessage = {
-        role: 'assistant',
+      const newMessage = buildGeneratedImageMessage({
         content: '图片已生成！如需调整参数，请直接告诉我。',
-        imageUrl: data.image_url,
-        templateName: (activeSkill || suggestedTemplateId) ? activeTemplateName : null
-      };
+        imageUrl,
+        templateName: (activeSkill || suggestedTemplateId) ? activeTemplateName : null,
+      });
       console.log('准备添加的消息:', newMessage);
 
       set({
@@ -542,30 +649,25 @@ export const useAppStore = create((set, get) => ({
       });
 
       // 自动加载到画布
-      if (fabricInstance) {
-        setProgrammaticUpdate(true);
-        fabric.FabricImage.fromURL(data.image_url).then((img) => {
-          const scale = Math.min(
-            fabricInstance.width * 0.6 / img.width,
-            fabricInstance.height * 0.6 / img.height
-          );
-          img.scale(scale);
-          fabricInstance.centerObject(img);
-          fabricInstance.add(img);
-          fabricInstance.setActiveObject(img);
-          fabricInstance.renderAll();
-          setProgrammaticUpdate(false);
-        });
-      }
+      await addGeneratedImageToCanvas({
+        fabricInstance,
+        imageUrl,
+        setProgrammaticUpdate,
+      });
 
       set({
-        generatedImage: { url: data.image_url, timestamp: data.timestamp },
+        generatedImage: { url: imageUrl, timestamp: data.timestamp },
         isGenerating: false
       });
 
+      if (user && typeof data.remaining_credits === 'number') {
+        setUser({ ...user, credits: data.remaining_credits });
+      }
+      refreshBilling().catch(() => null);
+
     } catch (error) {
-      alert('生图异常: ' + error.message);
       console.error('生图失败:', error);
+      toast.error(`生图异常: ${error.message || '网络错误'}`);
       addChatMessage('assistant', `生图失败: ${error.message || '网络错误'}`);
       set({ isGenerating: false });
     }
@@ -895,13 +997,7 @@ export const useAppStore = create((set, get) => ({
           }),
         });
 
-        const payload = await readApiResponse(response);
-        const data = payload.data;
-
-        if (!response.ok) {
-          throw new Error(getApiErrorMessage(response, payload, '批量生成失败，请稍后重试'));
-        }
-
+        const data = await response.json();
         results.push(data.image_url);
       }
 
@@ -916,7 +1012,7 @@ export const useAppStore = create((set, get) => ({
       });
     } catch (error) {
       console.error('Batch generation failed:', error);
-      addChatMessage('assistant', error.message || '批量生成失败');
+      addChatMessage('assistant', '批量生成失败');
       set({ isGenerating: false });
     }
   },
@@ -924,7 +1020,7 @@ export const useAppStore = create((set, get) => ({
   batchResults: [],
 
   generateImage: async (userParams = '', templateId = null, customPromptStructure = null, imageData = null) => {
-    const { activeSkill, addChatMessage, canvasDataUrl, token, user, setUser, setShowAuthModal, resolution, aspectRatio, setProgrammaticUpdate, numImages } = get();
+    const { activeSkill, addChatMessage, canvasDataUrl, token, user, setUser, setShowAuthModal, resolution, aspectRatio, setProgrammaticUpdate, numImages, refreshBilling } = get();
 
     const finalTemplateId = templateId || activeSkill;
 
@@ -960,10 +1056,11 @@ export const useAppStore = create((set, get) => ({
         'Authorization': `Bearer ${token}`
       };
 
-      const response = await fetch(getApiUrl('/v1/generate'), {
+      const response = await fetch(`${API_BASE}/v1/generate`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
+          request_id: createClientRequestId(),
           template_id: finalTemplateId || null,
           user_params: userParams,
           image_data: finalImageData,
@@ -974,8 +1071,7 @@ export const useAppStore = create((set, get) => ({
         }),
       });
 
-      const payload = await readApiResponse(response);
-      const data = payload.data;
+      const data = await response.json();
 
       if (!response.ok) {
         if (response.status === 401) {
@@ -983,51 +1079,42 @@ export const useAppStore = create((set, get) => ({
         } else if (response.status === 402) {
           addChatMessage('assistant', '积分不足，请充值');
         } else {
-          addChatMessage('assistant', getApiErrorMessage(response, payload, '生成失败，请重试'));
+          addChatMessage('assistant', data.detail || '生成失败，请重试');
         }
         set({ isGenerating: false });
         return;
       }
 
-      addChatMessage('assistant', '已生成图片', data.image_url);
+      const imageUrl = getGeneratedImageUrlOrThrow(data);
+      addChatMessage('assistant', '已生成图片', imageUrl);
 
       // 同时添加到 workspaceChatMessages（用于显示审图按钮和模板溯源）
       const { workspaceChatMessages, activeTemplateName } = get();
       set({
-        workspaceChatMessages: [...workspaceChatMessages, {
-          role: 'assistant',
+        workspaceChatMessages: [...workspaceChatMessages, buildGeneratedImageMessage({
           content: '已生成图片',
-          imageUrl: data.image_url,
-          templateName: finalTemplateId ? activeTemplateName : null
-        }]
+          imageUrl,
+          templateName: finalTemplateId ? activeTemplateName : null,
+        })]
       });
 
       // 自动加载到画布
       const { fabricInstance } = get();
-      if (fabricInstance) {
-        setProgrammaticUpdate(true);
-        fabric.FabricImage.fromURL(data.image_url).then((img) => {
-          const scale = Math.min(
-            fabricInstance.width * 0.6 / img.width,
-            fabricInstance.height * 0.6 / img.height
-          );
-          img.scale(scale);
-          fabricInstance.centerObject(img);
-          fabricInstance.add(img);
-          fabricInstance.setActiveObject(img);
-          fabricInstance.renderAll();
-          setProgrammaticUpdate(false);
-        });
-      }
+      await addGeneratedImageToCanvas({
+        fabricInstance,
+        imageUrl,
+        setProgrammaticUpdate,
+      });
 
 
-      if (user) {
-        setUser({ ...user, credits: user.credits - 1 });
+      if (user && typeof data.remaining_credits === 'number') {
+        setUser({ ...user, credits: data.remaining_credits });
       }
+      refreshBilling().catch(() => null);
 
       set({
         generatedImage: {
-          url: data.image_url,
+          url: imageUrl,
           timestamp: data.timestamp,
         },
         isGenerating: false,
