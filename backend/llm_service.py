@@ -197,6 +197,52 @@ async def _call_openai_compat_json(
         return data["choices"][0]["message"]["content"]
 
 
+@retry(
+    stop=stop_after_attempt(2),
+    wait=wait_exponential(multiplier=1, min=1, max=3),
+    retry=retry_if_exception(is_retryable_http_error)
+)
+async def _call_openai_compat_multimodal_json(
+    channel: ChatChannel,
+    model: str,
+    prompt: str,
+    image_bytes: bytes,
+    timeout: float = 90.0,
+    max_tokens: int = 4000,
+) -> str:
+    """调用 OpenAI 兼容多模态 chat/completions，返回纯文本内容。"""
+    url = _resolve_chat_url(channel)
+    headers = {
+        "Authorization": f"Bearer {channel.api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "stream": False,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{base64.b64encode(image_bytes).decode()}"
+                        },
+                    },
+                ],
+            }
+        ],
+        "temperature": 0.7,
+        "max_tokens": max_tokens,
+    }
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(url, json=payload, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
+
+
 async def chat_flash(messages: List[dict], json_mode: bool = False) -> str:
     """Flash 多渠道容灾调用"""
     if not FLASH_CHAT_CHANNELS:
@@ -232,6 +278,39 @@ async def chat_pro(messages: List[dict]) -> str:
             return result
         except Exception as e:
             print(f"⚠️  [Pro] 渠道 {ch.name} 失败: {e}")
+            last_error = e
+            continue
+
+    raise RuntimeError(f"所有 Chat 渠道均失败: {last_error}")
+
+
+async def chat_pro_multimodal_json(
+    prompt: str,
+    image_bytes: bytes,
+    *,
+    timeout: float = 90.0,
+    max_tokens: int = 4000,
+) -> str:
+    """Pro 多渠道容灾调用，支持带图片的审图请求。"""
+    if not PRO_CHAT_CHANNELS:
+        raise RuntimeError("未配置任何 Chat 渠道")
+
+    last_error = None
+    for ch in PRO_CHAT_CHANNELS:
+        try:
+            print(f"[Pro Vision] 尝试渠道: {ch.name}")
+            result = await _call_openai_compat_multimodal_json(
+                ch,
+                ch.model,
+                prompt,
+                image_bytes,
+                timeout=timeout,
+                max_tokens=max_tokens,
+            )
+            print(f"[Pro Vision] 渠道 {ch.name} 成功")
+            return result
+        except Exception as e:
+            print(f"⚠️  [Pro Vision] 渠道 {ch.name} 失败: {e}")
             last_error = e
             continue
 

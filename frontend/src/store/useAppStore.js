@@ -1102,7 +1102,13 @@ export const useAppStore = create((set, get) => ({
 
     addChatMessage('user', userParams || '生成图片');
 
-    set({ isGenerating: true });
+    const generationRequest = createGenerationRequestState();
+    const clearRequestState = clearGenerationRequestState();
+
+    set({
+      isGenerating: true,
+      ...generationRequest.nextState,
+    });
 
     try {
       const finalImageData = imageData || canvasDataUrl;

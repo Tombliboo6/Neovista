@@ -28,7 +28,7 @@ from billing_router import router as billing_router
 from database import engine, Base, get_db
 from auth import router as auth_router, get_current_user
 from models import User, ChatSession
-from llm_service import init_chat_channels, chat_flash, chat_pro, select_workspace_chat_model, PRO_CHAT_CHANNELS
+from llm_service import init_chat_channels, chat_flash, chat_pro, chat_pro_multimodal_json, select_workspace_chat_model
 from rate_limit_service import check_and_increment_ip_limit, extract_client_ip
 
 class APIChannel(BaseModel):
@@ -1135,87 +1135,51 @@ async def audit_diagram(
 - suggestions 数组：针对 negative 提出的改进建议
 - 输出必须是纯 JSON，不要包含任何其他文字"""
 
-        # 5. 调用 Chat 渠道的 Pro 模型进行视觉审图
-        for ch in PRO_CHAT_CHANNELS:
+        # 5. 调用带重试的 Pro 渠道进行视觉审图
+        try:
+            text = await chat_pro_multimodal_json(
+                f"{system_prompt}\n\n请审核这张建筑分析图",
+                img_data,
+                timeout=90.0,
+                max_tokens=4000,
+            )
+            print(f"[审图] 返回内容: {text[:200]}...")
+
+            # 尝试解析 JSON
             try:
-                print(f"[审图] 尝试渠道: {ch.name}")
+                result = json.loads(text)
+            except json.JSONDecodeError:
+                # 清理 Markdown 代码块标记
+                text = text.strip()
+                if text.startswith('```'):
+                    text = re.sub(r'^```(?:json)?\s*\n', '', text)
+                    text = re.sub(r'\n```\s*$', '', text)
 
-                # 智能拼接 URL
-                base = ch.base_url.rstrip('/')
-                if base.endswith('/chat/completions'):
-                    url = base
-                elif base.endswith('/v1'):
-                    url = f"{base}/chat/completions"
-                else:
-                    url = f"{base}/v1/chat/completions"
+                try:
+                    result = json.loads(text)
+                except json.JSONDecodeError:
+                    # 尝试提取 JSON 部分
+                    json_match = re.search(r'\{.*\}', text, re.DOTALL)
+                    if json_match:
+                        result = json.loads(json_match.group())
+                    else:
+                        print(f"[审图] 无法解析 JSON，返回默认响应")
+                        return DEFAULT_AUDIT_RESPONSE
 
-                headers = {
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {ch.api_key}"
-                }
+            standardized = {
+                "is_pass": result.get("is_pass", False),
+                "overview": result.get("overview", "审图完成"),
+                "positive": result.get("positive", []),
+                "negative": result.get("negative", []),
+                "suggestions": result.get("suggestions", [])
+            }
 
-                payload = {
-                    "model": ch.model,
-                    "stream": False,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": f"{system_prompt}\n\n请审核这张建筑分析图"},
-                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(img_data).decode()}"}}
-                            ]
-                        }
-                    ],
-                    "temperature": 0.7,
-                    "max_tokens": 4000
-                }
-
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    response = await client.post(url, json=payload, headers=headers)
-                    response.raise_for_status()
-                    data = response.json()
-                    text = data["choices"][0]["message"]["content"]
-                    print(f"[审图] 返回内容: {text[:200]}...")
-
-                    # 尝试解析 JSON
-                    try:
-                        result = json.loads(text)
-                    except json.JSONDecodeError:
-                        # 清理 Markdown 代码块标记
-                        text = text.strip()
-                        if text.startswith('```'):
-                            text = re.sub(r'^```(?:json)?\s*\n', '', text)
-                            text = re.sub(r'\n```\s*$', '', text)
-
-                        try:
-                            result = json.loads(text)
-                        except json.JSONDecodeError:
-                            # 尝试提取 JSON 部分
-                            json_match = re.search(r'\{.*\}', text, re.DOTALL)
-                            if json_match:
-                                result = json.loads(json_match.group())
-                            else:
-                                print(f"[审图] 无法解析 JSON，返回默认响应")
-                                return DEFAULT_AUDIT_RESPONSE
-
-                    # 验证并标准化数据结构
-                    standardized = {
-                        "is_pass": result.get("is_pass", False),
-                        "overview": result.get("overview", "审图完成"),
-                        "positive": result.get("positive", []),
-                        "negative": result.get("negative", []),
-                        "suggestions": result.get("suggestions", [])
-                    }
-
-                    print(f"[审图] 渠道 {ch.name} 成功")
-                    return standardized
-
-            except Exception as e:
-                print(f"⚠️  [审图] 渠道 {ch.name} 失败: {e}")
-                traceback.print_exc()
-                continue
-
-        return DEFAULT_AUDIT_RESPONSE
+            print("[审图] 审图渠道成功")
+            return standardized
+        except Exception as e:
+            print(f"⚠️  [审图] 所有审图渠道失败: {e}")
+            traceback.print_exc()
+            return DEFAULT_AUDIT_RESPONSE
 
     except HTTPException:
         raise
