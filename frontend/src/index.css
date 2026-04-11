@@ -1,0 +1,137 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root,
+:root[data-theme='dark'] {
+  --surface-0: #0f1117;
+  --surface-1: #1a1f2e;
+  --surface-2: #242938;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --brand-blue: #2563eb;
+  --brand-gold: #f59e0b;
+  --text-primary: rgba(255, 255, 255, 0.92);
+  --text-secondary: rgba(255, 255, 255, 0.72);
+  --text-muted: rgba(255, 255, 255, 0.45);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.15);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
+}
+
+:root[data-theme='light'] {
+  --surface-0: #f5f2eb;
+  --surface-1: #ffffff;
+  --surface-2: #ebe4d6;
+  --border-subtle: rgba(15, 23, 42, 0.08);
+  --brand-blue: #2563eb;
+  --brand-gold: #d97706;
+  --text-primary: rgba(15, 23, 42, 0.92);
+  --text-secondary: rgba(15, 23, 42, 0.72);
+  --text-muted: rgba(71, 85, 105, 0.78);
+  --scrollbar-thumb: rgba(100, 116, 139, 0.4);
+  --scrollbar-thumb-hover: rgba(71, 85, 105, 0.58);
+}
+
+body {
+  margin: 0;
+  @apply antialiased;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background:
+    radial-gradient(circle at top, rgba(37, 99, 235, 0.14), transparent 34%),
+    var(--surface-0);
+  color: var(--text-primary);
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+:root[data-theme='light'] body {
+  background:
+    radial-gradient(circle at top, rgba(37, 99, 235, 0.1), transparent 38%),
+    var(--surface-0);
+}
+
+/* 细滚动条 */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+:root[data-theme='light'] .bg-surface-0\/80 {
+  background-color: rgba(255, 255, 255, 0.82) !important;
+}
+
+:root[data-theme='light'] .border-white\/\[0\.06\] {
+  border-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+:root[data-theme='light'] .bg-white\/90 {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+}
+
+:root[data-theme='light'] .bg-white\/50 {
+  background-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+:root[data-theme='light'] .bg-white\/20 {
+  background-color: rgba(15, 23, 42, 0.12) !important;
+}
+
+:root[data-theme='light'] .hover\:bg-white\/10:hover {
+  background-color: rgba(15, 23, 42, 0.06) !important;
+}
+
+:root[data-theme='light'] .text-white\/90 {
+  color: rgba(15, 23, 42, 0.92) !important;
+}
+
+:root[data-theme='light'] .text-white\/80 {
+  color: rgba(15, 23, 42, 0.82) !important;
+}
+
+:root[data-theme='light'] .text-white\/70 {
+  color: rgba(15, 23, 42, 0.72) !important;
+}
+
+:root[data-theme='light'] .text-white\/60 {
+  color: rgba(30, 41, 59, 0.7) !important;
+}
+
+:root[data-theme='light'] .text-white\/50 {
+  color: rgba(51, 65, 85, 0.62) !important;
+}
+
+:root[data-theme='light'] .text-white\/40 {
+  color: rgba(71, 85, 105, 0.62) !important;
+}
+
+:root[data-theme='light'] .text-white\/30 {
+  color: rgba(100, 116, 139, 0.58) !important;
+}
+
+:root[data-theme='light'] .text-white\/25 {
+  color: rgba(100, 116, 139, 0.5) !important;
+}
+
+:root[data-theme='light'] .hover\:text-white\/80:hover {
+  color: rgba(15, 23, 42, 0.82) !important;
+}
+
+:root[data-theme='light'] .hover\:text-white\/60:hover {
+  color: rgba(30, 41, 59, 0.72) !important;
+}
+
+:root[data-theme='light'] .placeholder-white\/25::placeholder {
+  color: rgba(100, 116, 139, 0.62) !important;
+}
