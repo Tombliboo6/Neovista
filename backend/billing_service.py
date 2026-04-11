@@ -62,6 +62,7 @@ def create_generation_hold(
     num_images: int,
     request_id: str,
     idempotency_key: str,
+    selected_model: Optional[str] = None,
 ):
     existing = db.query(CreditTransaction).filter(
         CreditTransaction.idempotency_key == idempotency_key,
@@ -70,7 +71,7 @@ def create_generation_hold(
     if existing and existing.status != "REFUNDED":
         return existing
 
-    cost = calculate_generation_cost(resolution, num_images)
+    cost = calculate_generation_cost(resolution, num_images, selected_model)
     result = db.execute(
         update(User)
         .where(

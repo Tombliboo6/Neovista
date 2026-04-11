@@ -1,13 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { X, Copy, Check } from 'lucide-react';
 import ImageCarousel from './ImageCarousel';
+import {
+  getNextVisibleCount,
+  INITIAL_GALLERY_VISIBLE_COUNT,
+} from '../../lib/galleryPerformance.js';
 
 export default function PromptGallery({ onClose }) {
   const [templates, setTemplates] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('全部');
   const [copiedId, setCopiedId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_GALLERY_VISIBLE_COUNT);
+  const loadMoreRef = useRef(null);
   const generateImage = useAppStore((state) => state.generateImage);
   const setActiveSkill = useAppStore((state) => state.setActiveSkill);
   const setActiveTemplateName = useAppStore((state) => state.setActiveTemplateName);
@@ -35,6 +41,30 @@ export default function PromptGallery({ onClose }) {
   const filteredTemplates = selectedCategory === '全部'
     ? templates
     : templates.filter(t => getCategoryName(t) === selectedCategory);
+
+  useEffect(() => {
+    setVisibleCount(INITIAL_GALLERY_VISIBLE_COUNT);
+  }, [selectedCategory, filteredTemplates.length]);
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries[0]?.isIntersecting) return;
+      setVisibleCount((current) => getNextVisibleCount(current, filteredTemplates.length));
+    }, {
+      rootMargin: '280px 0px',
+    });
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [filteredTemplates.length]);
+
+  const visibleTemplates = useMemo(
+    () => filteredTemplates.slice(0, visibleCount),
+    [filteredTemplates, visibleCount],
+  );
 
   const handleUsePrompt = (template) => {
     setActiveSkill(template.id);
@@ -84,9 +114,9 @@ export default function PromptGallery({ onClose }) {
             </div>
           ) : (
             <div style={{ columnCount: 3, columnGap: '1.5rem' }}>
-              {filteredTemplates.map(template => (
+              {visibleTemplates.map((template, index) => (
                 <div key={template.id} className="bg-white border rounded-lg overflow-hidden hover:shadow-lg transition mb-6" style={{ breakInside: 'avoid' }}>
-                  <ImageCarousel images={template.images} />
+                  <ImageCarousel images={template.images} cardIndex={index} />
                   <div className="p-4">
                     <h3 className="text-sm font-semibold text-gray-800 mb-2">{template.title}</h3>
                     <p className="text-sm text-gray-600 line-clamp-3 mb-4">
@@ -112,6 +142,12 @@ export default function PromptGallery({ onClose }) {
             </div>
           )}
         </div>
+
+        {!loading && visibleCount < filteredTemplates.length && (
+          <div ref={loadMoreRef} className="pb-6 text-center text-xs text-gray-400">
+            正在加载更多模板...
+          </div>
+        )}
       </div>
     </div>
   );

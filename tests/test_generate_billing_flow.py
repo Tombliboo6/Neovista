@@ -118,14 +118,15 @@ class GenerateBillingFlowTest(unittest.IsolatedAsyncioTestCase):
             user_params="test prompt",
             resolution="2K",
             num_images=1,
+            selected_model="nano-banana-pro",
         )
 
         with patch.object(main, "API_CHANNELS", (main.APIChannel(name="Test", base_url="https://example.com", api_key="key", model="gemini"),)):
             with patch.object(main.httpx, "AsyncClient", lambda timeout=60.0: _FakeAsyncClient(_success_response())):
                 response = await main.generate_image(request, self.user, self.db)
 
-        self.assertEqual(response.remaining_credits, 150)
-        self.assertEqual(response.charged_credits, 50)
+        self.assertEqual(response.remaining_credits, 120)
+        self.assertEqual(response.charged_credits, 80)
 
     async def test_upstream_503_refunds_credits(self):
         request = main.GenerateRequest(
@@ -149,6 +150,7 @@ class GenerateBillingFlowTest(unittest.IsolatedAsyncioTestCase):
             resolution="2K",
             num_images=1,
             aspect_ratio="1:1",
+            selected_model="nano-banana-pro",
         )
         template_payload = json.dumps([
             {
@@ -163,8 +165,8 @@ class GenerateBillingFlowTest(unittest.IsolatedAsyncioTestCase):
                 with patch("builtins.open", mock_open(read_data=template_payload)):
                     response = await main.generate_diagram(request, self.user, self.db)
 
-        self.assertEqual(response.remaining_credits, 150)
-        self.assertEqual(response.charged_credits, 50)
+        self.assertEqual(response.remaining_credits, 120)
+        self.assertEqual(response.charged_credits, 80)
 
     async def test_generate_diagram_503_refunds_credits(self):
         request = main.GenerateDiagramRequest(

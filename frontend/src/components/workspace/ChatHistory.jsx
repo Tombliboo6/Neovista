@@ -62,6 +62,7 @@ export default function ChatHistory() {
   const confirmGenerate = useAppStore((s) => s.confirmGenerate);
   const dismissGenerate = useAppStore((s) => s.dismissGenerate);
   const isGenerating = useAppStore((s) => s.isGenerating);
+  const isGenerationCancelable = useAppStore((s) => s.isGenerationCancelable);
   const isWorkspaceChatLoading = useAppStore((s) => s.isWorkspaceChatLoading);
   const setResolution = useAppStore((s) => s.setResolution);
   const resolution = useAppStore((s) => s.resolution);
@@ -219,7 +220,11 @@ export default function ChatHistory() {
                 <span key={delay} className="w-1.5 h-1.5 rounded-full bg-brand-blue animate-pulse" style={{ animationDelay: `${delay}ms` }} />
               ))}
             </div>
-            <span className="text-xs text-white/40">{isGenerating ? '魔法施展中...' : '思考中...'}</span>
+            <span className="text-xs text-white/40">
+              {isGenerating
+                ? (isGenerationCancelable ? '生图请求发送中，可在右下角取消...' : '图片处理中...')
+                : '思考中...'}
+            </span>
           </div>
         )}
 

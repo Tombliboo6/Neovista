@@ -66,6 +66,23 @@ class BillingServiceTest(unittest.TestCase):
         self.assertEqual(hold.status, "PENDING")
         self.assertEqual(hold.amount, -50)
 
+    def test_create_generation_hold_uses_nano_banana_pro_pricing(self):
+        user = self._create_user(credits=300, email="hold-pro@example.com")
+
+        hold = create_generation_hold(
+            self.db,
+            user,
+            resolution="2K",
+            num_images=1,
+            request_id="req-pro-1",
+            idempotency_key="idem-pro-1",
+            selected_model="nano-banana-pro",
+        )
+
+        self.db.refresh(user)
+        self.assertEqual(user.credits, 220)
+        self.assertEqual(hold.amount, -80)
+
     def test_create_generation_hold_rejects_insufficient_balance(self):
         user = self._create_user(credits=10, email="poor@example.com")
 

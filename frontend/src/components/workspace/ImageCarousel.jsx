@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import LazyImage from '../common/LazyImage';
+import { getImageLoadingStrategy } from '../../lib/galleryPerformance.js';
 
-export default function ImageCarousel({ images }) {
+export default function ImageCarousel({ images, cardIndex = 0 }) {
   const [currentIndex, setCurrentIndex] = useState(images && images.length > 2 ? images.length - 1 : 0);
+  const loadingStrategy = getImageLoadingStrategy(cardIndex);
 
   if (!images || images.length === 0) {
     return <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400">暂无图片</div>;
@@ -17,20 +20,26 @@ export default function ImageCarousel({ images }) {
     return (
       <div className="w-full h-48 bg-gray-900 flex gap-1">
         <div className="relative flex-1">
-          <img
+          <LazyImage
             src={getImageUrl(images[0])}
             alt="原图"
-            className="w-full h-full object-contain"
+            wrapperClassName="w-full h-full"
+            imgClassName="w-full h-full object-contain"
+            loading={loadingStrategy.loading}
+            fetchPriority={loadingStrategy.fetchPriority}
           />
           <div className="absolute top-2 left-2 bg-blue-500 text-white text-xs px-2 py-1 rounded">
             原图/底图
           </div>
         </div>
         <div className="relative flex-1">
-          <img
+          <LazyImage
             src={getImageUrl(images[1])}
             alt="效果图"
-            className="w-full h-full object-contain"
+            wrapperClassName="w-full h-full"
+            imgClassName="w-full h-full object-contain"
+            loading="lazy"
+            fetchPriority="auto"
           />
           <div className="absolute top-2 left-2 bg-green-500 text-white text-xs px-2 py-1 rounded">
             效果图
@@ -51,10 +60,13 @@ export default function ImageCarousel({ images }) {
 
   return (
     <div className="relative w-full h-48 bg-gray-900 group">
-      <img
+      <LazyImage
         src={getImageUrl(images[currentIndex])}
         alt={`图片 ${currentIndex + 1}`}
-        className="w-full h-full object-contain"
+        wrapperClassName="w-full h-full"
+        imgClassName="w-full h-full object-contain"
+        loading={loadingStrategy.loading}
+        fetchPriority={loadingStrategy.fetchPriority}
       />
 
       {images.length > 1 && (

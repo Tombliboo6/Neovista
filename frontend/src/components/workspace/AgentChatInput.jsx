@@ -2,6 +2,7 @@ import { Paperclip, Send, Loader2, X, Bot } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { useState, useRef } from 'react';
 import toast from 'react-hot-toast';
+import { buildGenerationButtonState } from '../../lib/generationRequestState.js';
 
 const TARGET_MAX_BYTES = 2 * 1024 * 1024;
 const MAX_DIMENSION = 1536;
@@ -51,10 +52,12 @@ export default function AgentChatInput() {
   const chatInput = useAppStore((s) => s.chatInput);
   const setChatInput = useAppStore((s) => s.setChatInput);
   const isGenerating = useAppStore((s) => s.isGenerating);
+  const isGenerationCancelable = useAppStore((s) => s.isGenerationCancelable);
   const isWorkspaceChatLoading = useAppStore((s) => s.isWorkspaceChatLoading);
   const workspaceChat = useAppStore((s) => s.workspaceChat);
   const directChat = useAppStore((s) => s.directChat);
   const generateImage = useAppStore((s) => s.generateImage);
+  const cancelActiveGeneration = useAppStore((s) => s.cancelActiveGeneration);
   const fabricInstance = useAppStore((s) => s.fabricInstance);
   const activeSkill = useAppStore((s) => s.activeSkill);
   const selectedModel = useAppStore((s) => s.selectedModel);
@@ -69,6 +72,11 @@ export default function AgentChatInput() {
   const setUploadedImage = useAppStore((s) => s.setUploadedImage);
   const fileInputRef = useRef(null);
   const isLoading = isGenerating || isWorkspaceChatLoading;
+  const sendButtonState = buildGenerationButtonState({
+    isGenerating,
+    isGenerationCancelable,
+    hasInput: !!chatInput.trim(),
+  });
 
   const getSelectedCanvasImageDataURL = () => {
     if (!fabricInstance) return null;
@@ -144,6 +152,15 @@ export default function AgentChatInput() {
     }
     directChat(userInput, uploadedImage);
     setChatInput('');
+  };
+
+  const handlePrimaryAction = () => {
+    if (sendButtonState.mode === 'cancel') {
+      cancelActiveGeneration();
+      return;
+    }
+
+    handleSend();
   };
 
   const handleFileSelect = async (e) => {
@@ -234,12 +251,23 @@ export default function AgentChatInput() {
             <Paperclip size={14} className="text-white/40" />
           </button>
           <button
-            onClick={handleSend}
-            disabled={isLoading || !chatInput.trim()}
+            onClick={handlePrimaryAction}
+            disabled={isWorkspaceChatLoading || sendButtonState.disabled}
             className="p-1.5 rounded-lg transition disabled:opacity-30"
-            style={{ background: chatInput.trim() && !isLoading ? 'var(--brand-blue)' : 'var(--surface-2)' }}
+            title={sendButtonState.mode === 'cancel' ? '取消生图' : '发送'}
+            style={{
+              background: sendButtonState.mode === 'cancel'
+                ? 'rgba(239,68,68,0.9)'
+                : chatInput.trim() && !isLoading
+                  ? 'var(--brand-blue)'
+                  : 'var(--surface-2)',
+            }}
           >
-            {isLoading ? <Loader2 size={14} className="text-white animate-spin" /> : <Send size={14} className="text-white" />}
+            {sendButtonState.mode === 'cancel'
+              ? <X size={14} className="text-white" />
+              : sendButtonState.mode === 'loading'
+                ? <Loader2 size={14} className="text-white animate-spin" />
+                : <Send size={14} className="text-white" />}
           </button>
         </div>
       </div>

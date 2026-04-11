@@ -113,6 +113,7 @@ class GenerateRequest(BaseModel):
     resolution: Optional[str] = "2K"  # 新增：1K/2K/4K
     aspect_ratio: Optional[str] = "1:1"  # 新增：生图比例
     num_images: Optional[int] = 1
+    selected_model: Optional[str] = "nano-banana-2"
 
 class GenerateResponse(BaseModel):
     image_url: str
@@ -170,6 +171,7 @@ class GenerateDiagramRequest(BaseModel):
     request_id: Optional[str] = None
     resolution: Optional[str] = "2K"
     aspect_ratio: Optional[str] = "1:1"
+    selected_model: Optional[str] = "nano-banana-2"
 
 class GenerateDiagramResponse(BaseModel):
     image_url: str
@@ -257,6 +259,7 @@ def _create_generation_hold_or_raise(
     num_images: int,
     request_id: str,
     idempotency_key: str,
+    selected_model: Optional[str] = None,
 ):
     try:
         hold_txn = create_generation_hold(
@@ -266,6 +269,7 @@ def _create_generation_hold_or_raise(
             num_images=num_images,
             request_id=request_id,
             idempotency_key=idempotency_key,
+            selected_model=selected_model,
         )
         db.commit()
         db.refresh(current_user)
@@ -859,6 +863,7 @@ async def generate_image(
         num_images=request.num_images or 1,
         request_id=request_id,
         idempotency_key=idempotency_key,
+        selected_model=request.selected_model,
     )
 
     try:
@@ -868,6 +873,7 @@ async def generate_image(
             aspect_ratio=request.aspect_ratio,
             payload_log=(
                 f"[GENERATE PAYLOAD] template_id={request.template_id}, "
+                f"selected_model={request.selected_model}, "
                 f"resolution={request.resolution}, aspect_ratio={request.aspect_ratio}, "
                 f"dimensions={{width}}x{{height}}, has_image={bool(request.image_data)}"
             ),
@@ -1003,6 +1009,7 @@ async def generate_diagram(
             num_images=request.num_images or 1,
             request_id=request_id,
             idempotency_key=idempotency_key,
+            selected_model=request.selected_model,
         )
 
         try:
@@ -1012,6 +1019,7 @@ async def generate_diagram(
                 aspect_ratio=request.aspect_ratio,
                 payload_log=(
                     f"[GENERATE_DIAGRAM PAYLOAD] template_id={session.template_id}, "
+                    f"selected_model={request.selected_model}, "
                     f"resolution={request.resolution}, aspect_ratio={request.aspect_ratio}, "
                     "dimensions={width}x{height}"
                 ),

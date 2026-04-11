@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../store/useAppStore';
+import LazyImage from '../common/LazyImage';
 
 export default function TemplateDetailModal({ templateId, onClose }) {
   const navigate = useNavigate();
@@ -87,11 +88,15 @@ export default function TemplateDetailModal({ templateId, onClose }) {
               {template.images && template.images.length > 0 ? (
                 <div className="space-y-4">
                   {template.images.map((img, idx) => (
-                    <img
+                    <LazyImage
                       key={idx}
                       src={img.startsWith('http') ? img : img}
                       alt={`${template.title} - ${idx + 1}`}
-                      className="w-full rounded-lg"
+                      wrapperClassName="w-full rounded-lg bg-slate-100"
+                      imgClassName="w-full h-auto rounded-lg"
+                      loading={idx === 0 ? 'eager' : 'lazy'}
+                      fetchPriority={idx === 0 ? 'high' : 'auto'}
+                      style={{ minHeight: '12rem' }}
                     />
                   ))}
                 </div>

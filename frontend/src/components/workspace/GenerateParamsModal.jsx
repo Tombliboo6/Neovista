@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import { calculateGenerationCost, RESOLUTION_PRICING } from '../../lib/generationPricing';
+import { calculateGenerationCost, getResolutionPricing, normalizeGenerationModel } from '../../lib/generationPricing';
+import { useAppStore } from '../../store/useAppStore';
 
 export default function GenerateParamsModal({ isOpen, onClose, onConfirm }) {
   const [resolution, setResolution] = useState('2K');
   const [numImages, setNumImages] = useState(1);
+  const selectedModel = useAppStore((s) => s.selectedModel);
 
   if (!isOpen) return null;
 
@@ -13,7 +15,10 @@ export default function GenerateParamsModal({ isOpen, onClose, onConfirm }) {
     onClose();
   };
 
-  const totalCost = calculateGenerationCost(resolution, numImages);
+  const normalizedModel = normalizeGenerationModel(selectedModel);
+  const resolutionPricing = getResolutionPricing(normalizedModel);
+  const totalCost = calculateGenerationCost(resolution, numImages, normalizedModel);
+  const modelLabel = normalizedModel === 'nano-banana-pro' ? 'Nano Banana Pro' : 'Nano Banana 2';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -31,6 +36,7 @@ export default function GenerateParamsModal({ isOpen, onClose, onConfirm }) {
         </button>
 
         <h3 className="text-lg font-semibold text-gray-800 mb-4">生图参数确认</h3>
+        <p className="text-xs text-gray-500 mb-4">当前模型：{modelLabel}</p>
 
         <div className="space-y-4">
           <div>
@@ -45,10 +51,10 @@ export default function GenerateParamsModal({ isOpen, onClose, onConfirm }) {
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
-                >
+                  >
                   <div className="font-medium">{res}</div>
                   <div className={`text-[11px] ${resolution === res ? 'text-white/80' : 'text-gray-500'}`}>
-                    {RESOLUTION_PRICING[res]} 点
+                    {resolutionPricing[res]} 点
                   </div>
                 </button>
               ))}
@@ -79,7 +85,7 @@ export default function GenerateParamsModal({ isOpen, onClose, onConfirm }) {
             <div className="text-sm text-gray-700">预计扣费</div>
             <div className="text-lg font-semibold text-blue-700">{totalCost} 点</div>
             <div className="text-xs text-gray-500 mt-1">
-              计费规则：分辨率单价 × 生图数量
+              计费规则：当前模型分辨率单价 × 生图数量
             </div>
           </div>
         </div>

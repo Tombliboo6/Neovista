@@ -9,15 +9,21 @@ from pricing import calculate_generation_cost
 
 
 class BillingPricingTest(unittest.TestCase):
-    def test_resolution_pricing(self):
-        self.assertEqual(calculate_generation_cost("1K", 1), 30)
-        self.assertEqual(calculate_generation_cost("2K", 1), 50)
-        self.assertEqual(calculate_generation_cost("4K", 1), 90)
+    def test_nano_banana_2_resolution_pricing(self):
+        self.assertEqual(calculate_generation_cost("1K", 1, "nano-banana-2"), 30)
+        self.assertEqual(calculate_generation_cost("2K", 1, "nano-banana-2"), 50)
+        self.assertEqual(calculate_generation_cost("4K", 1, "nano-banana-2"), 90)
+
+    def test_nano_banana_pro_adds_30_credits_per_image(self):
+        self.assertEqual(calculate_generation_cost("1K", 1, "nano-banana-pro"), 60)
+        self.assertEqual(calculate_generation_cost("2K", 1, "nano-banana-pro"), 80)
+        self.assertEqual(calculate_generation_cost("4K", 1, "nano-banana-pro"), 120)
 
     def test_num_images_multiplier(self):
-        self.assertEqual(calculate_generation_cost("2K", 3), 150)
+        self.assertEqual(calculate_generation_cost("2K", 3, "nano-banana-2"), 150)
+        self.assertEqual(calculate_generation_cost("2K", 3, "nano-banana-pro"), 240)
 
-    def test_higher_resolution_multiplier(self):
+    def test_defaults_to_nano_banana_2_pricing(self):
         self.assertEqual(calculate_generation_cost("4K", 2), 180)
 
 

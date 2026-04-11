@@ -6,6 +6,20 @@ import {
   getGeneratedImageUrlOrThrow,
   summarizeGeneratedImageUrl,
 } from './generatedImageUtils.js';
+import {
+  cancelGenerationRequestState,
+  clearGenerationRequestState,
+  createGenerationRequestState,
+  isAbortGenerationError,
+} from '../lib/generationRequestState.js';
+import {
+  applyThemePreference,
+  getStoredThemePreference,
+  persistThemePreference,
+} from '../lib/themeState.js';
+
+const initialTheme = getStoredThemePreference();
+applyThemePreference(initialTheme);
 
 // API 基础路径（开发和生产都用相对路径，Vite proxy 处理）
 const API_BASE = '/api';
@@ -299,7 +313,19 @@ export const useAppStore = create((set, get) => ({
   setChatInput: (input) => set({ chatInput: input }),
 
   isGenerating: false,
+  isGenerationCancelable: false,
+  activeGenerationController: null,
   setIsGenerating: (generating) => set({ isGenerating: generating }),
+  cancelActiveGeneration: () => {
+    const { activeGenerationController } = get();
+    if (!activeGenerationController) return false;
+
+    set({
+      ...cancelGenerationRequestState(activeGenerationController),
+      isGenerating: false,
+    });
+    return true;
+  },
 
   generatedImage: null,
   setGeneratedImage: (image) => set({ generatedImage: image }),
@@ -327,12 +353,18 @@ export const useAppStore = create((set, get) => ({
   aspectRatio: '1:1',          // 生图比例
   numImages: 1,                // 生图数量（默认 1 张）
   selectedModel: '',           // 生图模型（默认未选择）
+  theme: initialTheme,
   setAgentMode: (mode) => set({ agentMode: mode }),
   setUploadedImage: (image) => set({ uploadedImage: image }),
   setResolution: (res) => set({ resolution: res }),
   setAspectRatio: (ratio) => set({ aspectRatio: ratio }),
   setNumImages: (num) => set({ numImages: num }),
   setSelectedModel: (model) => set({ selectedModel: model }),
+  setTheme: (theme) => {
+    const nextTheme = persistThemePreference(theme);
+    applyThemePreference(nextTheme);
+    set({ theme: nextTheme });
+  },
 
   refreshBilling: async () => {
     const { token, user } = get();
@@ -544,7 +576,7 @@ export const useAppStore = create((set, get) => ({
   },
 
   confirmGenerate: async () => {
-    const { homeSessionId, token, suggestedTemplateId, addChatMessage, setShowAuthModal, fabricInstance, setProgrammaticUpdate, numImages, activeSkill, resolution, aspectRatio, user, setUser, refreshBilling } = get();
+    const { homeSessionId, token, suggestedTemplateId, addChatMessage, setShowAuthModal, fabricInstance, setProgrammaticUpdate, numImages, activeSkill, resolution, aspectRatio, selectedModel, user, setUser, refreshBilling } = get();
 
     if (!homeSessionId) {
       addChatMessage('assistant', '会话ID丢失，请刷新页面重试');
@@ -572,7 +604,14 @@ export const useAppStore = create((set, get) => ({
       }
     }
 
-    set({ readyToGenerate: false, isGenerating: true });
+    const generationRequest = createGenerationRequestState();
+    const clearRequestState = clearGenerationRequestState();
+
+    set({
+      readyToGenerate: false,
+      isGenerating: true,
+      ...generationRequest.nextState,
+    });
 
     try {
       // 提取并压缩 i2i 底图（如果存在）
@@ -609,6 +648,7 @@ export const useAppStore = create((set, get) => ({
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
+        signal: generationRequest.signal,
         body: JSON.stringify({
           request_id: createClientRequestId(),
           session_id: homeSessionId,
@@ -616,16 +656,18 @@ export const useAppStore = create((set, get) => ({
           num_images: numImages,
           template_id: activeSkill || suggestedTemplateId,
           resolution: resolution,
-          aspect_ratio: aspectRatio
+          aspect_ratio: aspectRatio,
+          selected_model: selectedModel || 'nano-banana-2',
         }),
       });
 
+      set(clearRequestState);
       const data = await response.json();
 
       if (!response.ok) {
         const errorMsg = data.detail || '生成失败';
         addChatMessage('assistant', `生成失败: ${errorMsg}`);
-        set({ isGenerating: false });
+        set({ ...clearRequestState, isGenerating: false });
         return;
       }
 
@@ -656,6 +698,7 @@ export const useAppStore = create((set, get) => ({
       });
 
       set({
+        ...clearRequestState,
         generatedImage: { url: imageUrl, timestamp: data.timestamp },
         isGenerating: false
       });
@@ -666,10 +709,17 @@ export const useAppStore = create((set, get) => ({
       refreshBilling().catch(() => null);
 
     } catch (error) {
+      if (isAbortGenerationError(error)) {
+        get().addSystemMessage('已取消本次生图请求');
+        toast('已取消本次生图请求');
+        set({ ...clearRequestState, isGenerating: false });
+        return;
+      }
+
       console.error('生图失败:', error);
       toast.error(`生图异常: ${error.message || '网络错误'}`);
       addChatMessage('assistant', `生图失败: ${error.message || '网络错误'}`);
-      set({ isGenerating: false });
+      set({ ...clearRequestState, isGenerating: false });
     }
   },
 
@@ -980,7 +1030,13 @@ export const useAppStore = create((set, get) => ({
 
     addChatMessage('user', `批量生成 ${count} 个方案`);
 
-    set({ isGenerating: true });
+    const generationRequest = createGenerationRequestState();
+    const clearRequestState = clearGenerationRequestState();
+
+    set({
+      isGenerating: true,
+      ...generationRequest.nextState,
+    });
 
     try {
       const canvasDataUrl = get().canvasDataUrl;
@@ -1020,7 +1076,7 @@ export const useAppStore = create((set, get) => ({
   batchResults: [],
 
   generateImage: async (userParams = '', templateId = null, customPromptStructure = null, imageData = null) => {
-    const { activeSkill, addChatMessage, canvasDataUrl, token, user, setUser, setShowAuthModal, resolution, aspectRatio, setProgrammaticUpdate, numImages, refreshBilling } = get();
+    const { activeSkill, addChatMessage, canvasDataUrl, token, user, setUser, setShowAuthModal, resolution, aspectRatio, setProgrammaticUpdate, numImages, selectedModel, refreshBilling } = get();
 
     const finalTemplateId = templateId || activeSkill;
 
@@ -1059,6 +1115,7 @@ export const useAppStore = create((set, get) => ({
       const response = await fetch(`${API_BASE}/v1/generate`, {
         method: 'POST',
         headers,
+        signal: generationRequest.signal,
         body: JSON.stringify({
           request_id: createClientRequestId(),
           template_id: finalTemplateId || null,
@@ -1068,9 +1125,11 @@ export const useAppStore = create((set, get) => ({
           resolution: resolution,
           aspect_ratio: aspectRatio,
           num_images: numImages,
+          selected_model: selectedModel || 'nano-banana-2',
         }),
       });
 
+      set(clearRequestState);
       const data = await response.json();
 
       if (!response.ok) {
@@ -1081,7 +1140,7 @@ export const useAppStore = create((set, get) => ({
         } else {
           addChatMessage('assistant', data.detail || '生成失败，请重试');
         }
-        set({ isGenerating: false });
+        set({ ...clearRequestState, isGenerating: false });
         return;
       }
 
@@ -1113,6 +1172,7 @@ export const useAppStore = create((set, get) => ({
       refreshBilling().catch(() => null);
 
       set({
+        ...clearRequestState,
         generatedImage: {
           url: imageUrl,
           timestamp: data.timestamp,
@@ -1122,9 +1182,16 @@ export const useAppStore = create((set, get) => ({
         canvasDataUrl: null,
       });
     } catch (error) {
+      if (isAbortGenerationError(error)) {
+        get().addSystemMessage('已取消本次生图请求');
+        toast('已取消本次生图请求');
+        set({ ...clearRequestState, isGenerating: false });
+        return;
+      }
+
       console.error('Failed to generate image:', error);
       addChatMessage('assistant', '生成失败，请重试');
-      set({ isGenerating: false });
+      set({ ...clearRequestState, isGenerating: false });
     }
   },
 }));
