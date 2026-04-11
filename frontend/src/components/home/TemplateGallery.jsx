@@ -3,6 +3,7 @@ import { Image, Loader2 } from 'lucide-react';
 import TemplateDetailModal from './TemplateDetailModal';
 import LazyImage from '../common/LazyImage';
 import {
+  getGalleryCardMediaPresentation,
   getImageLoadingStrategy,
   getNextVisibleCount,
   getPrimaryTemplateImage,
@@ -66,7 +67,7 @@ export default function TemplateGallery() {
               key={index}
               className="rounded-lg overflow-hidden border border-gray-200 bg-white break-inside-avoid mb-4"
             >
-              <div className="aspect-[4/5] animate-pulse bg-slate-100" />
+              <div className="min-h-64 animate-pulse bg-slate-100" />
               <div className="p-4 space-y-2">
                 <div className="h-4 bg-slate-100 rounded animate-pulse" />
                 <div className="h-3 bg-slate-100 rounded animate-pulse w-4/5" />
@@ -86,6 +87,7 @@ export default function TemplateGallery() {
         {visibleTemplates.map((template, index) => {
           const previewImage = getPrimaryTemplateImage(template.images || []);
           const loadingStrategy = getImageLoadingStrategy(index);
+          const mediaPresentation = getGalleryCardMediaPresentation();
 
           return (
             <button
@@ -100,10 +102,10 @@ export default function TemplateGallery() {
                 <LazyImage
                   src={previewImage}
                   alt={template.title}
-                  wrapperClassName="w-full"
-                  imgClassName="w-full h-full object-cover"
+                  wrapperClassName={mediaPresentation.wrapperClassName}
+                  imgClassName={mediaPresentation.imgClassName}
                   skeletonClassName="bg-slate-100"
-                  style={{ aspectRatio: '4 / 5' }}
+                  style={mediaPresentation.style}
                   loading={loadingStrategy.loading}
                   fetchPriority={loadingStrategy.fetchPriority}
                 />

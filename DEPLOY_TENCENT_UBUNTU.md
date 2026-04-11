@@ -56,12 +56,21 @@ sudo chmod 755 /var/lib/neovista
 sudo mkdir -p /var/www
 cd /var/www
 
-# 克隆代码（替换为你的仓库地址）
-sudo git clone https://github.com/your-username/neovista.git neovista
+# 克隆代码
+sudo git clone https://github.com/wzhoudargon/Neovista.git neovista
 
 # 修改权限（使用 ubuntu 用户）
 sudo chown -R ubuntu:ubuntu /var/www/neovista
+
+# 确认当前部署主线是 main
+cd /var/www/neovista
+git checkout main
 ```
+
+**当前仓库约定：**
+- GitHub `main` 是当前唯一部署主线
+- 服务器工作树也跟踪 `origin/main`
+- 旧的 `deploy-snapshot`、`release/billing-sync` 仅作为历史回滚参考，不再作为日常发布入口
 
 ---
 
@@ -389,7 +398,8 @@ sudo systemctl restart nginx
 
 # 更新代码
 cd /var/www/neovista
-git pull
+git checkout main
+git pull --ff-only origin main
 cd backend && source .venv/bin/activate && pip install -r requirements.txt
 cd ../frontend && npm install && npm run build
 sudo systemctl restart neovista-api
@@ -398,6 +408,12 @@ sudo systemctl reload nginx
 # 备份数据库
 cp /var/lib/neovista/neovista.db ~/backup/neovista-$(date +%Y%m%d).db
 ```
+
+**推荐发布顺序：**
+1. 本地在 `Neovista2.0/main` 完成开发并推送到 GitHub `main`
+2. 服务器执行上面的“更新代码”命令
+3. 如涉及数据库结构或账本字段，额外执行 `python migrate_billing_schema.py`
+4. 用 `curl https://neotest.site/api/health` 和浏览器手工冒烟确认上线结果
 
 ---
 
