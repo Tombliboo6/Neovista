@@ -21,3 +21,9 @@ test('generateImage initializes generation request state before calling fetch', 
     /const clearRequestState = clearGenerationRequestState\(\);/,
   );
 });
+
+test('useAppStore loads fabric lazily so the home page does not pay for workspace code', () => {
+  assert.doesNotMatch(storeSource, /import \* as fabric from 'fabric';/);
+  assert.match(storeSource, /const loadFabric = \(\) => import\('fabric'\);/);
+  assert.match(storeSource, /const \{ FabricImage \} = await loadFabric\(\);/);
+});

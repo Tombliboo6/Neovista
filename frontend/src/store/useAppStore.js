@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import * as fabric from 'fabric';
 import toast from 'react-hot-toast';
 import {
   buildGeneratedImageMessage,
@@ -154,6 +153,8 @@ const createClientRequestId = () => {
   return `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
+const loadFabric = () => import('fabric');
+
 const addGeneratedImageToCanvas = async ({
   fabricInstance,
   imageUrl,
@@ -165,7 +166,8 @@ const addGeneratedImageToCanvas = async ({
 
   setProgrammaticUpdate(true);
   try {
-    const img = await fabric.FabricImage.fromURL(imageUrl);
+    const { FabricImage } = await loadFabric();
+    const img = await FabricImage.fromURL(imageUrl);
     const scale = Math.min(
       fabricInstance.width * 0.6 / img.width,
       fabricInstance.height * 0.6 / img.height
@@ -923,11 +925,12 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
-  addText: () => {
+  addText: async () => {
     const { fabricInstance } = get();
     if (!fabricInstance) return;
 
-    const text = new fabric.IText('双击编辑文字', {
+    const { IText } = await loadFabric();
+    const text = new IText('双击编辑文字', {
       left: fabricInstance.width / 2 - 60,
       top: fabricInstance.height / 2 - 20,
       fontSize: 24,
@@ -956,8 +959,9 @@ export const useAppStore = create((set, get) => ({
     if (!fabricInstance) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
-      fabric.FabricImage.fromURL(e.target.result)
+    reader.onload = async (e) => {
+      const { FabricImage } = await loadFabric();
+      FabricImage.fromURL(e.target.result)
         .then((img) => {
           const maxWidth = fabricInstance.width * 0.5;
           const maxHeight = fabricInstance.height * 0.5;

@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException, Header, Depends, Request
+from fastapi import FastAPI, HTTPException, Header, Depends, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List, Tuple
@@ -30,6 +31,7 @@ from auth import router as auth_router, get_current_user
 from models import User, ChatSession
 from llm_service import init_chat_channels, chat_flash, chat_pro, chat_pro_multimodal_json, select_workspace_chat_model
 from rate_limit_service import check_and_increment_ip_limit, extract_client_ip
+from template_api_utils import serialize_template_summary
 
 class APIChannel(BaseModel):
     name: str
@@ -423,9 +425,46 @@ async def get_templates():
     try:
         with open('templates_v2.json', 'r', encoding='utf-8') as f:
             templates = json.load(f)
-        return {"templates": templates, "total": len(templates)}
+        summaries = [serialize_template_summary(template) for template in templates]
+        return JSONResponse(
+            content={"templates": summaries, "total": len(summaries)},
+            headers={"Cache-Control": "public, max-age=300, stale-while-revalidate=3600"},
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/template-thumbnails/{filename}")
+async def get_template_thumbnail(filename: str):
+    """首页画廊缩略图，避免首屏直接加载原始大图。"""
+    safe_filename = os.path.basename(filename)
+    image_path = os.path.join("static", "template_images", safe_filename)
+    if not os.path.exists(image_path):
+        raise HTTPException(status_code=404, detail="缩略图源文件不存在")
+
+    try:
+        with Image.open(image_path) as img:
+            if img.mode not in ("RGB", "RGBA"):
+                img = img.convert("RGBA" if "A" in img.getbands() else "RGB")
+
+            max_width = 560
+            if img.width > max_width:
+                ratio = max_width / float(img.width)
+                target_size = (max_width, max(1, int(img.height * ratio)))
+                img = img.resize(target_size, Image.Resampling.LANCZOS)
+
+            buffer = io.BytesIO()
+            img.save(buffer, format="WEBP", quality=72, method=6)
+
+        return Response(
+            content=buffer.getvalue(),
+            media_type="image/webp",
+            headers={"Cache-Control": "public, max-age=2592000, stale-while-revalidate=86400"},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"缩略图生成失败: {str(e)}")
 
 @app.get("/api/templates")
 async def get_templates_v2():

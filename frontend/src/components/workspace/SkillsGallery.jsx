@@ -14,7 +14,7 @@ export default function SkillsGallery() {
   const canvasDataUrl = useAppStore((state) => state.canvasDataUrl);
 
   useEffect(() => {
-    fetch('/api/v1/templates')
+    fetch('/api/templates')
       .then(res => res.json())
       .then(data => {
         setTemplates(data);
@@ -195,7 +195,7 @@ export default function SkillsGallery() {
                     <h4 className="text-sm font-medium text-slate-800">{template.title}</h4>
                     <span className="text-xs text-gray-400">ID: {template.id}</span>
                   </div>
-                  <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">{template.prompt}</p>
+                  <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">{template.display_text || ''}</p>
                   <div className="flex items-center gap-4 mt-2">
                     <div className="flex items-center gap-1 text-xs text-gray-400">
                       <Heart size={12} />
