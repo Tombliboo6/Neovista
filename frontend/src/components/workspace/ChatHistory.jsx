@@ -3,6 +3,7 @@ import { User, Bot, Trash2, CheckCircle, RotateCcw, FileSearch, Info, ThumbsUp, 
 import { useState } from 'react';
 import GenerateParamsModal from './GenerateParamsModal';
 import toast from 'react-hot-toast';
+import { resolveReferenceImages } from '../../lib/referenceImages.js';
 
 function AuditCard({ data }) {
   return (
@@ -78,7 +79,7 @@ export default function ChatHistory() {
   const generateImage = useAppStore((s) => s.generateImage);
   const selectedModel = useAppStore((s) => s.selectedModel);
   const addSystemMessage = useAppStore((s) => s.addSystemMessage);
-  const uploadedImage = useAppStore((s) => s.uploadedImage);
+  const uploadedImages = useAppStore((s) => s.uploadedImages);
   const fabricInstance = useAppStore((s) => s.fabricInstance);
 
   const handleGenerateClick = () => {
@@ -118,8 +119,8 @@ export default function ChatHistory() {
         if (!obj) return null;
         try { return obj.toDataURL({ format: 'jpeg', quality: 0.85 }); } catch { return null; }
       };
-      const resolvedImage = uploadedImage || getCanvasImage();
-      if (needsImage && !resolvedImage) { toast.error('该模板需要先上传参考底图（或在画布中放置图片）'); return; }
+      const resolvedImages = resolveReferenceImages(uploadedImages, getCanvasImage());
+      if (needsImage && resolvedImages.length === 0) { toast.error('该模板需要先上传参考底图（或在画布中放置图片）'); return; }
       const buildFinalPromptStructure = async (templateId, suggestedParams) => {
         const response = await fetch(`/api/v1/templates/${templateId}`);
         const template = await response.json();
@@ -135,7 +136,7 @@ export default function ChatHistory() {
         return finalStructure;
       };
       const finalStructure = await buildFinalPromptStructure(templateId, suggestedParams);
-      generateImage('', templateId, finalStructure, needsImage ? resolvedImage : null);
+      generateImage('', templateId, finalStructure, needsImage ? resolvedImages : null);
     } catch (error) {
       console.error('确认生成失败:', error);
       toast.error('确认生成失败，请重试');

@@ -16,6 +16,7 @@ import {
   getStoredThemePreference,
   persistThemePreference,
 } from '../lib/themeState.js';
+import { normalizeReferenceImages } from '../lib/referenceImages.js';
 
 const initialTheme = getStoredThemePreference();
 applyThemePreference(initialTheme);
@@ -202,9 +203,51 @@ export const useAppStore = create((set, get) => ({
     }
     set({ token });
   },
+  bootstrapAuth: async () => {
+    const { token, refreshBilling } = get();
+
+    if (!token) {
+      set({ user: null, billingSummary: null });
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/v1/auth/me`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        localStorage.removeItem('token');
+        set({ user: null, token: null, billingSummary: null });
+        return;
+      }
+
+      set({ user: data });
+      refreshBilling().catch(() => null);
+    } catch (error) {
+      console.error('Failed to bootstrap auth state:', error);
+      localStorage.removeItem('token');
+      set({ user: null, token: null, billingSummary: null });
+    }
+  },
   logout: () => {
     localStorage.removeItem('token');
     set({ user: null, token: null, billingSummary: null });
+  },
+  ensureAuthenticatedForModelAction: (actionLabel = '当前操作') => {
+    const { token, setShowAuthModal, setAuthModalContext } = get();
+    if (!token) {
+      setAuthModalContext({
+        actionLabel,
+        message: `登录后可继续${actionLabel}`
+      });
+      setShowAuthModal(true);
+      return false;
+    }
+    return true;
   },
 
   activeSkill: null,
@@ -222,14 +265,23 @@ export const useAppStore = create((set, get) => ({
     suggestedTemplateId: null,
     suggestedParams: null,
     readyToGenerate: false,
-    uploadedImage: null
+    uploadedImages: []
   }),
 
   // 触发模板参数调整（调用 Agent 1）
   triggerTemplateAdjustParams: async () => {
-    const { activeSkill, activeTemplateName, homeSessionId, workspaceChatMessages } = get();
+    const {
+      activeSkill,
+      activeTemplateName,
+      homeSessionId,
+      workspaceChatMessages,
+      ensureAuthenticatedForModelAction,
+    } = get();
 
     if (!activeSkill) return;
+    if (!ensureAuthenticatedForModelAction('调整模板参数')) {
+      return;
+    }
 
     set({ isWorkspaceChatLoading: true });
 
@@ -304,7 +356,12 @@ export const useAppStore = create((set, get) => ({
   setProgrammaticUpdate: (value) => set({ isProgrammaticUpdate: value }),
 
   showAuthModal: false,
-  setShowAuthModal: (show) => set({ showAuthModal: show }),
+  authModalContext: null,
+  setAuthModalContext: (context) => set({ authModalContext: context }),
+  setShowAuthModal: (show) => set((state) => ({
+    showAuthModal: show,
+    authModalContext: show ? state.authModalContext : null,
+  })),
 
   showGenerateModal: false,
   setShowGenerateModal: (show) => set({ showGenerateModal: show }),
@@ -350,14 +407,17 @@ export const useAppStore = create((set, get) => ({
   suggestedTemplateId: null,   // Flash 建议的模版ID
   isWorkspaceChatLoading: false,
   agentMode: false,            // Agent 对话模式
-  uploadedImage: null,         // 用户上传的参考底图
+  uploadedImages: [],          // 用户上传的参考底图
   resolution: '2K',            // 生图分辨率
   aspectRatio: '1:1',          // 生图比例
   numImages: 1,                // 生图数量（默认 1 张）
   selectedModel: '',           // 生图模型（默认未选择）
   theme: initialTheme,
   setAgentMode: (mode) => set({ agentMode: mode }),
-  setUploadedImage: (image) => set({ uploadedImage: image }),
+  setUploadedImages: (images) => set({ uploadedImages: images }),
+  removeUploadedImageAt: (index) => set((state) => ({
+    uploadedImages: state.uploadedImages.filter((_, currentIndex) => currentIndex !== index),
+  })),
   setResolution: (res) => set({ resolution: res }),
   setAspectRatio: (ratio) => set({ aspectRatio: ratio }),
   setNumImages: (num) => set({ numImages: num }),
@@ -481,8 +541,12 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
-  directChat: async (message, imageData) => {
-    const { workspaceChatMessages } = get();
+  directChat: async (message, imageDatas) => {
+    const { workspaceChatMessages, ensureAuthenticatedForModelAction } = get();
+    if (!ensureAuthenticatedForModelAction('继续对话')) {
+      return;
+    }
+    const normalizedImages = normalizeReferenceImages(imageDatas);
 
     const userMsg = { role: 'user', content: message };
     const updated = [...workspaceChatMessages, userMsg];
@@ -494,7 +558,8 @@ export const useAppStore = create((set, get) => ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message,
-          image_data: imageData || null
+          image_data: normalizedImages[0] || null,
+          image_datas: normalizedImages.length > 0 ? normalizedImages : null,
         }),
       });
 
@@ -525,8 +590,18 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
-  workspaceChat: async (message, imageData) => {
-    const { homeSessionId, workspaceChatMessages, addChatMessage, agentMode } = get();
+  workspaceChat: async (message, imageDatas) => {
+    const {
+      homeSessionId,
+      workspaceChatMessages,
+      addChatMessage,
+      agentMode,
+      ensureAuthenticatedForModelAction,
+    } = get();
+    if (!ensureAuthenticatedForModelAction('继续 Agent 对话')) {
+      return;
+    }
+    const normalizedImages = normalizeReferenceImages(imageDatas);
 
     // 追加用户消息
     const userMsg = { role: 'user', content: message };
@@ -543,7 +618,8 @@ export const useAppStore = create((set, get) => ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: apiMessages,
-          image_data: imageData || null,
+          image_data: normalizedImages[0] || null,
+          image_datas: normalizedImages.length > 0 ? normalizedImages : null,
           agent_mode: agentMode,
           session_id: homeSessionId
         }),
@@ -578,15 +654,31 @@ export const useAppStore = create((set, get) => ({
   },
 
   confirmGenerate: async () => {
-    const { homeSessionId, token, suggestedTemplateId, addChatMessage, setShowAuthModal, fabricInstance, setProgrammaticUpdate, numImages, activeSkill, resolution, aspectRatio, selectedModel, user, setUser, refreshBilling } = get();
+    const {
+      homeSessionId,
+      token,
+      suggestedTemplateId,
+      addChatMessage,
+      fabricInstance,
+      setProgrammaticUpdate,
+      numImages,
+      activeSkill,
+      resolution,
+      aspectRatio,
+      selectedModel,
+      user,
+      setUser,
+      refreshBilling,
+      uploadedImages,
+      ensureAuthenticatedForModelAction,
+    } = get();
 
     if (!homeSessionId) {
       addChatMessage('assistant', '会话ID丢失，请刷新页面重试');
       return;
     }
 
-    if (!token) {
-      setShowAuthModal(true);
+    if (!ensureAuthenticatedForModelAction('生成图片')) {
       return;
     }
 
@@ -597,7 +689,7 @@ export const useAppStore = create((set, get) => ({
       const template = data.templates.find(t => t.id === suggestedTemplateId);
 
       if (template && template.is_i2i) {
-        const hasImage = fabricInstance && fabricInstance.getObjects().some(obj => obj.type === 'image');
+        const hasImage = uploadedImages.length > 0 || (fabricInstance && fabricInstance.getObjects().some(obj => obj.type === 'image'));
         if (!hasImage) {
           addChatMessage('assistant', '当前模版需要参考底图。请先在左侧工作区（Fabric 画布）中上传或粘贴您的场地底图，然后再点击生成。');
           set({ isGenerating: false });
@@ -644,6 +736,10 @@ export const useAppStore = create((set, get) => ({
         }
       }
 
+      const baseImages = uploadedImages.length > 0
+        ? uploadedImages
+        : normalizeReferenceImages(base_image);
+
       const response = await fetch(`${API_BASE}/generate_diagram`, {
         method: 'POST',
         headers: {
@@ -654,7 +750,8 @@ export const useAppStore = create((set, get) => ({
         body: JSON.stringify({
           request_id: createClientRequestId(),
           session_id: homeSessionId,
-          base_image,
+          base_image: baseImages[0] || null,
+          base_images: baseImages.length > 0 ? baseImages : null,
           num_images: numImages,
           template_id: activeSkill || suggestedTemplateId,
           resolution: resolution,
@@ -702,7 +799,11 @@ export const useAppStore = create((set, get) => ({
       set({
         ...clearRequestState,
         generatedImage: { url: imageUrl, timestamp: data.timestamp },
-        isGenerating: false
+        isGenerating: false,
+        readyToGenerate: false,
+        suggestedParams: null,
+        suggestedTemplateId: null,
+        agentMode: false,
       });
 
       if (user && typeof data.remaining_credits === 'number') {
@@ -743,11 +844,16 @@ export const useAppStore = create((set, get) => ({
     console.log('🔍 审图函数被调用');
     console.log('imageUrl:', imageUrl);
 
-    const { token, addChatMessage } = get();
+    const { token, addChatMessage, ensureAuthenticatedForModelAction } = get();
 
     console.log('token:', token ? '存在' : '不存在');
 
-    if (!token || !imageUrl) {
+    if (!imageUrl) {
+      console.log('❌ 缺少 imageUrl，提前返回');
+      return;
+    }
+
+    if (!ensureAuthenticatedForModelAction('进行审图分析')) {
       console.log('❌ 缺少 token 或 imageUrl，提前返回');
       return;
     }
@@ -1025,10 +1131,14 @@ export const useAppStore = create((set, get) => ({
   },
 
   batchGenerate: async (userParams = '', count = 3) => {
-    const { activeSkill, addChatMessage } = get();
+    const { activeSkill, addChatMessage, ensureAuthenticatedForModelAction } = get();
 
     if (!activeSkill) {
       addChatMessage('assistant', '请先选择一个模版');
+      return;
+    }
+
+    if (!ensureAuthenticatedForModelAction('批量生成图片')) {
       return;
     }
 
@@ -1054,6 +1164,7 @@ export const useAppStore = create((set, get) => ({
             template_id: activeSkill,
             user_params: userParams ? `${userParams} (方案 ${i + 1})` : `方案 ${i + 1}`,
             image_data: canvasDataUrl,
+            image_datas: normalizeReferenceImages(canvasDataUrl),
           }),
         });
 
@@ -1079,13 +1190,26 @@ export const useAppStore = create((set, get) => ({
 
   batchResults: [],
 
-  generateImage: async (userParams = '', templateId = null, customPromptStructure = null, imageData = null) => {
-    const { activeSkill, addChatMessage, canvasDataUrl, token, user, setUser, setShowAuthModal, resolution, aspectRatio, setProgrammaticUpdate, numImages, selectedModel, refreshBilling } = get();
+  generateImage: async (userParams = '', templateId = null, customPromptStructure = null, imageDatas = null) => {
+    const {
+      activeSkill,
+      addChatMessage,
+      canvasDataUrl,
+      token,
+      user,
+      setUser,
+      resolution,
+      aspectRatio,
+      setProgrammaticUpdate,
+      numImages,
+      selectedModel,
+      refreshBilling,
+      ensureAuthenticatedForModelAction,
+    } = get();
 
     const finalTemplateId = templateId || activeSkill;
 
-    if (!token) {
-      setShowAuthModal(true);
+    if (!ensureAuthenticatedForModelAction('生成图片')) {
       return;
     }
 
@@ -1094,8 +1218,10 @@ export const useAppStore = create((set, get) => ({
       try {
         const templateRes = await fetch(`${API_BASE}/v1/templates/${finalTemplateId}`);
         const templateData = await templateRes.json();
+        const normalizedImages = normalizeReferenceImages(imageDatas);
+        const fallbackCanvasImages = normalizeReferenceImages(canvasDataUrl);
 
-        if (templateData.is_i2i && !imageData && !canvasDataUrl) {
+        if (templateData.is_i2i && normalizedImages.length === 0 && fallbackCanvasImages.length === 0) {
           addChatMessage('assistant', '此模版需要上传底图，请先在画布中上传图片或绘制内容');
           return;
         }
@@ -1115,7 +1241,13 @@ export const useAppStore = create((set, get) => ({
     });
 
     try {
-      const finalImageData = imageData || canvasDataUrl;
+      const finalImageList = (() => {
+        const normalizedImages = normalizeReferenceImages(imageDatas);
+        if (normalizedImages.length > 0) {
+          return normalizedImages;
+        }
+        return normalizeReferenceImages(canvasDataUrl);
+      })();
 
       const headers = {
         'Content-Type': 'application/json',
@@ -1130,7 +1262,8 @@ export const useAppStore = create((set, get) => ({
           request_id: createClientRequestId(),
           template_id: finalTemplateId || null,
           user_params: userParams,
-          image_data: finalImageData,
+          image_data: finalImageList[0] || null,
+          image_datas: finalImageList.length > 0 ? finalImageList : null,
           custom_prompt_structure: customPromptStructure,
           resolution: resolution,
           aspect_ratio: aspectRatio,
@@ -1188,6 +1321,10 @@ export const useAppStore = create((set, get) => ({
           timestamp: data.timestamp,
         },
         isGenerating: false,
+        readyToGenerate: false,
+        suggestedParams: null,
+        suggestedTemplateId: null,
+        agentMode: false,
         chatInput: '',
         canvasDataUrl: null,
       });

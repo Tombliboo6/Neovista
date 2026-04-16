@@ -11,7 +11,7 @@ export default function AuthModal({ isOpen, onClose }) {
   const [code, setCode] = useState('');
   const [countdown, setCountdown] = useState(0);
   const [error, setError] = useState('');
-  const { setToken, setUser, refreshBilling } = useAppStore();
+  const { setToken, setUser, refreshBilling, authModalContext, setAuthModalContext } = useAppStore();
 
   if (!isOpen) return null;
 
@@ -82,6 +82,7 @@ export default function AuthModal({ isOpen, onClose }) {
       if (mode === 'register') {
         toast.success(`注册成功，已获得 ${data.user?.credits ?? 0} 算力点`);
       }
+      setAuthModalContext(null);
       onClose();
     } catch (err) {
       setError(err.message);
@@ -91,8 +92,15 @@ export default function AuthModal({ isOpen, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-96">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">{mode === 'login' ? '登录' : '注册'}</h2>
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <h2 className="text-xl font-bold">{mode === 'login' ? '登录' : '注册'}</h2>
+            {authModalContext?.message && (
+              <p className="mt-1 text-sm text-gray-500">
+                当前操作需要登录。{authModalContext?.message || '登录后可继续当前操作'}
+              </p>
+            )}
+          </div>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
         </div>
 

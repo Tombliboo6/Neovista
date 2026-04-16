@@ -1,12 +1,19 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import HomePage from './components/home/HomePage';
+import { useAppStore } from './store/useAppStore';
 
 const Workspace = lazy(() => import('./components/workspace/Workspace'));
 const AdminPage = lazy(() => import('./components/admin/AdminPage'));
 
 function App() {
+  const bootstrapAuth = useAppStore((state) => state.bootstrapAuth);
+
+  useEffect(() => {
+    bootstrapAuth();
+  }, [bootstrapAuth]);
+
   return (
     <BrowserRouter>
       <Toaster position="top-center" />

@@ -88,6 +88,54 @@ class AuditChannelResilienceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_SequencedAsyncClient.requests[0][0], "https://primary.example.com/v1/chat/completions")
         self.assertEqual(_SequencedAsyncClient.requests[-1][0], "https://secondary.example.com/v1/chat/completions")
 
+    async def test_chat_pro_multimodal_image_retries_then_falls_back_to_next_channel(self):
+        channels = (
+            llm_service.ChatChannel(
+                name="primary",
+                base_url="https://primary.example.com",
+                api_key="key-1",
+                model="gemini-primary",
+            ),
+            llm_service.ChatChannel(
+                name="secondary",
+                base_url="https://secondary.example.com",
+                api_key="key-2",
+                model="gemini-secondary",
+            ),
+        )
+        success_response = httpx.Response(
+            200,
+            request=httpx.Request("POST", "https://secondary.example.com/v1/chat/completions"),
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": "分析完成"
+                        }
+                    }
+                ]
+            },
+        )
+
+        _SequencedAsyncClient.outcomes = [
+            httpx.ReadTimeout("timed out"),
+            httpx.ReadTimeout("timed out again"),
+            success_response,
+        ]
+
+        with patch.object(llm_service, "PRO_CHAT_CHANNELS", channels):
+            with patch.object(llm_service.httpx, "AsyncClient", _SequencedAsyncClient):
+                result = await llm_service.chat_pro_multimodal_image(
+                    "请分析这些参考图",
+                    b"fake-image-bytes",
+                )
+
+        self.assertEqual(result, "分析完成")
+        self.assertEqual(len(_SequencedAsyncClient.requests), 3)
+        self.assertEqual(_SequencedAsyncClient.timeouts, [90.0, 90.0, 90.0])
+        self.assertEqual(_SequencedAsyncClient.requests[0][0], "https://primary.example.com/v1/chat/completions")
+        self.assertEqual(_SequencedAsyncClient.requests[-1][0], "https://secondary.example.com/v1/chat/completions")
+
 
 if __name__ == "__main__":
     unittest.main()

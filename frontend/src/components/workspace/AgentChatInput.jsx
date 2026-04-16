@@ -1,8 +1,14 @@
 import { Paperclip, Send, Loader2, X, Bot } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
-import { useState, useRef } from 'react';
+import { useRef } from 'react';
 import toast from 'react-hot-toast';
 import { buildGenerationButtonState } from '../../lib/generationRequestState.js';
+import {
+  collectClipboardImageFiles,
+  collectSupportedImageFiles,
+  mergeReferenceImages,
+  resolveReferenceImages,
+} from '../../lib/referenceImages.js';
 
 const TARGET_MAX_BYTES = 2 * 1024 * 1024;
 const MAX_DIMENSION = 1536;
@@ -23,7 +29,8 @@ function compressImage(file) {
           height = Math.round(height * scale);
         }
         const canvas = document.createElement('canvas');
-        canvas.width = width; canvas.height = height;
+        canvas.width = width;
+        canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
         let quality = 0.9;
@@ -33,7 +40,8 @@ function compressImage(file) {
           dataUrl = canvas.toDataURL('image/jpeg', quality);
         }
         if (dataUrl.length > TARGET_MAX_BYTES) {
-          canvas.width = Math.round(width * 0.7); canvas.height = Math.round(height * 0.7);
+          canvas.width = Math.round(width * 0.7);
+          canvas.height = Math.round(height * 0.7);
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           quality = 0.7;
           dataUrl = canvas.toDataURL('image/jpeg', quality);
@@ -64,12 +72,11 @@ export default function AgentChatInput() {
   const setSelectedModel = useAppStore((s) => s.setSelectedModel);
   const aspectRatio = useAppStore((s) => s.aspectRatio);
   const setAspectRatio = useAppStore((s) => s.setAspectRatio);
-  const readyToGenerate = useAppStore((s) => s.readyToGenerate);
-  const suggestedParams = useAppStore((s) => s.suggestedParams);
   const agentMode = useAppStore((s) => s.agentMode);
   const setAgentMode = useAppStore((s) => s.setAgentMode);
-  const uploadedImage = useAppStore((s) => s.uploadedImage);
-  const setUploadedImage = useAppStore((s) => s.setUploadedImage);
+  const uploadedImages = useAppStore((s) => s.uploadedImages);
+  const setUploadedImages = useAppStore((s) => s.setUploadedImages);
+  const removeUploadedImageAt = useAppStore((s) => s.removeUploadedImageAt);
   const fileInputRef = useRef(null);
   const isLoading = isGenerating || isWorkspaceChatLoading;
   const sendButtonState = buildGenerationButtonState({
@@ -82,12 +89,16 @@ export default function AgentChatInput() {
     if (!fabricInstance) return null;
     const activeObj = fabricInstance.getActiveObject();
     if (activeObj && activeObj.type === 'image') {
-      try { return activeObj.toDataURL({ format: 'jpeg', quality: 0.85, multiplier: 1 }); } catch { return null; }
+      try {
+        return activeObj.toDataURL({ format: 'jpeg', quality: 0.85, multiplier: 1 });
+      } catch {
+        return null;
+      }
     }
     return null;
   };
 
-  const resolveImageData = () => uploadedImage || getSelectedCanvasImageDataURL() || null;
+  const resolveImageDataList = () => resolveReferenceImages(uploadedImages, getSelectedCanvasImageDataURL());
 
   const checkTemplateNeedsUploadedImage = async (templateId) => {
     if (!templateId) return false;
@@ -95,25 +106,9 @@ export default function AgentChatInput() {
       const response = await fetch(`/api/v1/templates/${templateId}`);
       const template = await response.json();
       return template.is_i2i === true;
-    } catch { return false; }
-  };
-
-  const buildFinalPromptStructure = async (templateId, suggestedParams) => {
-    if (!templateId || !suggestedParams) return null;
-    try {
-      const response = await fetch(`/api/v1/templates/${templateId}`);
-      const template = await response.json();
-      if (!template.prompt_structure) return null;
-      const finalStructure = { ...template.prompt_structure };
-      Object.keys(finalStructure).forEach(key => {
-        if (typeof finalStructure[key] === 'string') {
-          Object.keys(suggestedParams).forEach(paramKey => {
-            finalStructure[key] = finalStructure[key].replace(new RegExp(`{${paramKey}}`, 'g'), suggestedParams[paramKey] || '');
-          });
-        }
-      });
-      return finalStructure;
-    } catch { return null; }
+    } catch {
+      return false;
+    }
   };
 
   const handleKeyDown = (e) => {
@@ -124,33 +119,76 @@ export default function AgentChatInput() {
     }
   };
 
+  const replaceUploadedImagesFromFiles = async (files) => {
+    if (!files.length) return;
+
+    const toastId = files.some((file) => file.size > TARGET_MAX_BYTES)
+      ? toast.loading('图片较大，正在自动压缩...')
+      : null;
+
+    try {
+      const compressedImages = [];
+      let compressedCount = 0;
+      let originalKBTotal = 0;
+      let finalKBTotal = 0;
+
+      for (const file of files) {
+        const { dataUrl, wasCompressed, originalKB, finalKB } = await compressImage(file);
+        compressedImages.push(dataUrl);
+        originalKBTotal += originalKB;
+        finalKBTotal += finalKB;
+        if (wasCompressed) {
+          compressedCount += 1;
+        }
+      }
+
+      setUploadedImages(mergeReferenceImages(uploadedImages, compressedImages));
+      if (toastId) toast.dismiss(toastId);
+      if (compressedCount > 0) {
+        toast.success(`已更新 ${compressedImages.length} 张参考图：${originalKBTotal}KB → ${finalKBTotal}KB`, { duration: 3000 });
+      }
+    } catch (err) {
+      if (toastId) toast.dismiss(toastId);
+      toast.error('图片处理失败：' + err.message);
+    }
+  };
+
   const handleSend = async () => {
     if (isLoading || !chatInput.trim()) return;
     const userInput = chatInput.trim();
+    const referenceImages = resolveImageDataList();
+
     if (agentMode) {
-      workspaceChat(userInput, uploadedImage);
+      workspaceChat(userInput, resolveImageDataList());
       setChatInput('');
       return;
     }
+
     if (activeSkill && selectedModel) {
       const needsImage = await checkTemplateNeedsUploadedImage(activeSkill);
-      const finalImage = resolveImageData();
-      if (needsImage && !finalImage) { toast.error('该模板需要先上传参考底图'); setChatInput(''); return; }
-      generateImage(userInput, activeSkill, null, needsImage ? finalImage : null);
+      if (needsImage && referenceImages.length === 0) {
+        toast.error('该模板需要先上传参考底图');
+        setChatInput('');
+        return;
+      }
+      generateImage(userInput, activeSkill, null, needsImage ? referenceImages : null);
       setChatInput('');
       return;
     }
-    if (selectedModel && (uploadedImage || getSelectedCanvasImageDataURL())) {
-      generateImage(userInput, null, null, resolveImageData());
+
+    if (selectedModel && referenceImages.length > 0) {
+      generateImage(userInput, null, null, resolveImageDataList());
       setChatInput('');
       return;
     }
-    if (selectedModel && !uploadedImage) {
+
+    if (selectedModel && referenceImages.length === 0) {
       generateImage(userInput, null, null, null);
       setChatInput('');
       return;
     }
-    directChat(userInput, uploadedImage);
+
+    directChat(userInput, resolveImageDataList());
     setChatInput('');
   };
 
@@ -164,29 +202,30 @@ export default function AgentChatInput() {
   };
 
   const handleFileSelect = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.match(/^image\/(jpeg|png|webp)$/)) { toast.error('仅支持 JPG/PNG/WebP 格式'); return; }
-    const toastId = file.size > TARGET_MAX_BYTES ? toast.loading('图片较大，正在自动压缩...') : null;
-    try {
-      const { dataUrl, wasCompressed, originalKB, finalKB } = await compressImage(file);
-      setUploadedImage(dataUrl);
-      if (toastId) toast.dismiss(toastId);
-      if (wasCompressed) toast.success(`已自动压缩：${originalKB}KB → ${finalKB}KB`, { duration: 3000 });
-    } catch (err) {
-      if (toastId) toast.dismiss(toastId);
-      toast.error('图片处理失败：' + err.message);
+    const files = collectSupportedImageFiles(e.target.files || []);
+    if (files.length === 0) {
+      toast.error('仅支持 JPG/PNG/WebP 格式');
+      e.target.value = '';
+      return;
     }
+
+    await replaceUploadedImagesFromFiles(files);
     e.target.value = '';
+  };
+
+  const handlePaste = async (e) => {
+    const files = collectSupportedImageFiles(collectClipboardImageFiles(e.clipboardData));
+    if (files.length === 0) return;
+
+    e.preventDefault();
+    await replaceUploadedImagesFromFiles(files);
   };
 
   const ratios = ['1:1', '3:4', '4:3', '9:16', '16:9', '21:9'];
 
   return (
     <div className="p-3" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-      {/* 控制栏 */}
       <div className="mb-2.5 flex items-center gap-2 flex-wrap">
-        {/* CSS Toggle */}
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <div className="relative">
             <input type="checkbox" checked={agentMode} onChange={(e) => setAgentMode(e.target.checked)} className="sr-only" />
@@ -214,26 +253,36 @@ export default function AgentChatInput() {
           className="text-xs rounded-lg px-2 py-1 text-white/60 focus:outline-none focus:ring-1 focus:ring-brand-blue/50"
           style={{ background: 'var(--surface-2)', border: '1px solid var(--border-subtle)' }}
         >
-          {ratios.map(r => <option key={r} value={r}>{r}</option>)}
+          {ratios.map((ratio) => <option key={ratio} value={ratio}>{ratio}</option>)}
         </select>
       </div>
 
-      {/* 上传图片预览 */}
-      {uploadedImage && (
-        <div className="mb-2 flex items-center gap-2">
-          <img src={uploadedImage} alt="" className="w-10 h-10 object-cover rounded-lg" style={{ border: '1px solid var(--border-subtle)' }} />
-          <button onClick={() => setUploadedImage(null)} className="p-1 rounded-lg hover:bg-white/10 transition">
-            <X size={13} className="text-white/40" />
+      {uploadedImages.length > 0 && (
+        <div className="mb-2 flex items-center gap-2 overflow-x-auto">
+          {uploadedImages.map((imageUrl, index) => (
+            <div key={`${index}-${imageUrl.slice(0, 24)}`} className="relative flex-shrink-0">
+              <img src={imageUrl} alt="" className="w-10 h-10 object-cover rounded-lg" style={{ border: '1px solid var(--border-subtle)' }} />
+              <button
+                onClick={() => removeUploadedImageAt(index)}
+                className="absolute -top-1 -right-1 p-0.5 rounded-full hover:bg-white/10 transition"
+                style={{ background: 'var(--surface-2)' }}
+              >
+                <X size={11} className="text-white/50" />
+              </button>
+            </div>
+          ))}
+          <button onClick={() => setUploadedImages([])} className="px-2 py-1 text-[11px] rounded-lg text-white/50 hover:bg-white/10 transition flex-shrink-0">
+            清空
           </button>
         </div>
       )}
 
-      {/* 输入框 */}
       <div className="relative rounded-xl overflow-hidden" style={{ background: 'var(--surface-1)', border: '1px solid var(--border-subtle)' }}>
         <textarea
           value={chatInput}
           onChange={(e) => setChatInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           disabled={isLoading}
           placeholder={agentMode ? '描述你的设计需求...' : '输入参数直接生图...'}
           className="w-full resize-none bg-transparent px-3 py-2.5 pr-16 text-sm text-white/80 placeholder-white/25 focus:outline-none disabled:opacity-50"
@@ -241,10 +290,10 @@ export default function AgentChatInput() {
           style={{ maxHeight: '120px' }}
         />
         <div className="absolute bottom-2 right-2 flex items-center gap-1">
-          <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleFileSelect} />
+          <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={handleFileSelect} />
           <button
             onClick={() => fileInputRef.current?.click()}
-            disabled={isLoading || (!agentMode && !selectedModel)}
+            disabled={isLoading}
             className="p-1.5 rounded-lg transition hover:bg-white/10 disabled:opacity-30"
             title="上传图片"
           >

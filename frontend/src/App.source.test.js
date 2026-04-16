@@ -11,3 +11,8 @@ test('App lazy-loads non-home routes', () => {
   assert.doesNotMatch(appSource, /import Workspace from '\.\/components\/workspace\/Workspace';/);
   assert.doesNotMatch(appSource, /import AdminPage from '\.\/components\/admin\/AdminPage';/);
 });
+
+test('App bootstraps auth state on startup', () => {
+  assert.match(appSource, /const bootstrapAuth = useAppStore\(\(state\) => state\.bootstrapAuth\);/);
+  assert.match(appSource, /useEffect\(\(\) => \{\s*bootstrapAuth\(\);/);
+});

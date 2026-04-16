@@ -9,6 +9,7 @@ from functools import lru_cache
 import httpx
 import os
 import json
+import math
 import re
 import traceback
 import uuid
@@ -16,7 +17,7 @@ import base64
 import io
 from datetime import datetime
 from dotenv import load_dotenv
-from PIL import Image
+from PIL import Image, ImageOps
 
 load_dotenv()
 
@@ -29,7 +30,14 @@ from billing_router import router as billing_router
 from database import engine, Base, get_db
 from auth import router as auth_router, get_current_user
 from models import User, ChatSession
-from llm_service import init_chat_channels, chat_flash, chat_pro, chat_pro_multimodal_json, select_workspace_chat_model
+from llm_service import (
+    init_chat_channels,
+    chat_flash,
+    chat_pro,
+    chat_pro_multimodal_image,
+    chat_pro_multimodal_json,
+    select_workspace_chat_model,
+)
 from rate_limit_service import check_and_increment_ip_limit, extract_client_ip
 from template_api_utils import serialize_template_summary
 
@@ -110,6 +118,7 @@ class GenerateRequest(BaseModel):
     template_id: Optional[str] = None
     user_params: Optional[str] = None
     image_data: Optional[str] = None
+    image_datas: Optional[List[str]] = None
     custom_prompt_structure: Optional[dict] = None
     request_id: Optional[str] = None
     resolution: Optional[str] = "2K"  # 新增：1K/2K/4K
@@ -152,6 +161,7 @@ class WorkspaceChatMessage(BaseModel):
 class WorkspaceChatRequest(BaseModel):
     messages: List[WorkspaceChatMessage]
     image_data: Optional[str] = None
+    image_datas: Optional[List[str]] = None
     agent_mode: bool = False
     session_id: Optional[str] = None
 
@@ -168,6 +178,7 @@ class WorkspaceChatResponse(BaseModel):
 class GenerateDiagramRequest(BaseModel):
     session_id: str
     base_image: Optional[str] = None
+    base_images: Optional[List[str]] = None
     num_images: Optional[int] = 1
     template_id: Optional[str] = None
     request_id: Optional[str] = None
@@ -186,6 +197,245 @@ class AuditDiagramRequest(BaseModel):
     session_id: Optional[str] = None
     template_id: Optional[str] = None
     image_base64: str
+
+def _normalize_reference_images(
+    image_data: Optional[str] = None,
+    image_datas: Optional[List[str]] = None,
+) -> List[str]:
+    if image_datas:
+        return [image for image in image_datas if isinstance(image, str) and image.strip()]
+    if image_data and isinstance(image_data, str) and image_data.strip():
+        return [image_data]
+    return []
+
+
+def _build_chat_user_message_with_images(text: str, image_datas: Optional[List[str]] = None) -> dict:
+    normalized_images = _normalize_reference_images(image_datas=image_datas)
+    if not normalized_images:
+        return {"role": "user", "content": text}
+
+    content = [{"type": "text", "text": text}]
+    for image in normalized_images:
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": image},
+        })
+    return {"role": "user", "content": content}
+
+
+def _decode_reference_image(image_data: str) -> Image.Image:
+    raw_data = image_data.split(",", 1)[1] if image_data.startswith("data:") else image_data
+    decoded = base64.b64decode(raw_data)
+    image = Image.open(io.BytesIO(decoded))
+    image = ImageOps.exif_transpose(image)
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+    return image
+
+
+def _compose_reference_image_bytes(image_datas: Optional[List[str]] = None) -> bytes:
+    normalized_images = _normalize_reference_images(image_datas=image_datas)
+    if not normalized_images:
+        return b""
+
+    tile_images: List[Image.Image] = []
+    max_tile_size = 1024
+    for image_data in normalized_images:
+        image = _decode_reference_image(image_data)
+        image.thumbnail((max_tile_size, max_tile_size), Image.Resampling.LANCZOS)
+        tile_images.append(image)
+
+    columns = max(1, math.ceil(math.sqrt(len(tile_images))))
+    rows = max(1, math.ceil(len(tile_images) / columns))
+    cell_width = max(image.width for image in tile_images)
+    cell_height = max(image.height for image in tile_images)
+    gap = 24 if len(tile_images) > 1 else 0
+
+    canvas_width = columns * cell_width + gap * (columns - 1)
+    canvas_height = rows * cell_height + gap * (rows - 1)
+    canvas = Image.new("RGB", (canvas_width, canvas_height), "white")
+
+    for index, image in enumerate(tile_images):
+        column = index % columns
+        row = index // columns
+        x = column * (cell_width + gap) + (cell_width - image.width) // 2
+        y = row * (cell_height + gap) + (cell_height - image.height) // 2
+        canvas.paste(image, (x, y))
+
+    buffer = io.BytesIO()
+    canvas.save(buffer, format="JPEG", quality=88, optimize=True)
+    return buffer.getvalue()
+
+
+def _image_data_to_inline_part(image_data: str) -> dict:
+    mime_type = "image/png"
+    base64_data = image_data
+    if image_data.startswith("data:"):
+        header, base64_data = image_data.split(",", 1)
+        mime_type = header.split(":", 1)[1].split(";", 1)[0] or mime_type
+    return {
+        "inlineData": {
+            "mimeType": mime_type,
+            "data": base64_data,
+        }
+    }
+
+
+def _append_reference_image_parts(parts: List[dict], image_datas: Optional[List[str]] = None) -> List[dict]:
+    normalized_images = _normalize_reference_images(image_datas=image_datas)
+    if not normalized_images:
+        return parts
+    composed_image_bytes = _compose_reference_image_bytes(normalized_images)
+    return [{
+        "inlineData": {
+            "mimeType": "image/jpeg",
+            "data": base64.b64encode(composed_image_bytes).decode("utf-8"),
+        }
+    }] + parts
+
+
+def _resolve_generate_diagram_reference_images(
+    request_base_image: Optional[str] = None,
+    request_base_images: Optional[List[str]] = None,
+    session_history: Optional[List[dict]] = None,
+) -> List[str]:
+    request_images = _normalize_reference_images(
+        image_data=request_base_image,
+        image_datas=request_base_images,
+    )
+    if request_images:
+        return request_images
+
+    for message in reversed(session_history or []):
+        history_images = _normalize_reference_images(
+            image_data=message.get("image_data"),
+            image_datas=message.get("image_datas"),
+        )
+        if history_images:
+            return history_images
+
+    return []
+
+
+def _build_multimodal_prompt_from_messages(messages: List[dict]) -> str:
+    role_labels = {
+        "system": "系统",
+        "user": "用户",
+        "assistant": "助手",
+    }
+    lines = []
+    for message in messages:
+        content = message.get("content", "")
+        if isinstance(content, list):
+            text_parts = [
+                part.get("text", "").strip()
+                for part in content
+                if isinstance(part, dict) and part.get("type") == "text" and part.get("text", "").strip()
+            ]
+            content = "\n".join(text_parts).strip()
+        if not isinstance(content, str) or not content.strip():
+            continue
+        role = role_labels.get(message.get("role"), message.get("role", "消息"))
+        lines.append(f"{role}: {content}")
+    return "\n\n".join(lines)
+
+
+def _should_enable_prompt_consultant_mode(message: Optional[str]) -> bool:
+    if not isinstance(message, str) or not message.strip():
+        return False
+
+    lowered = message.lower()
+    explicit_prompt_keywords = (
+        "提示词",
+        "prompt",
+        "反推",
+        "negative prompt",
+        "正向提示",
+        "反向提示",
+        "生图词",
+        "文生图",
+    )
+    if any(keyword in lowered for keyword in explicit_prompt_keywords):
+        return True
+
+    preset_keywords = (
+        "角色预设",
+        "角色设定",
+        "人物设定",
+        "场景预设",
+        "场景设定",
+        "character preset",
+        "character setup",
+        "scene preset",
+        "scene setup",
+    )
+    action_keywords = (
+        "推导",
+        "生成",
+        "整理",
+        "编写",
+        "写一版",
+        "写成",
+        "转成",
+        "改写",
+        "generate",
+        "write",
+    )
+    return any(keyword in lowered for keyword in preset_keywords) and any(
+        keyword in lowered for keyword in action_keywords
+    )
+
+
+def _build_direct_chat_system_prompt(message: Optional[str]) -> str:
+    base_prompt = """你是 NeoVista 的设计对话助手。你可以：
+- 回答设计相关的问题（建筑、景观、规划、室内、产品等）
+- 进行日常对话和闲聊
+- 提供创意灵感和建议
+- 分析用户上传的参考图片
+- 根据用户提供的场景设定、角色预设、参考图和目标风格，生成适合图像模型使用的最终 prompt
+
+边界要求：
+- 你可以帮助用户分析图片并生成生图提示词
+- 你可以把复杂设定整理成适合 Google Imagen 3 Pro 使用的最终 prompt
+- 不要推荐模板
+- 不要进入 Agent 工作流
+- 不要返回 ready_to_generate、suggested_template_id、suggested_params 等控制字段
+- 保持回答自然、直接、可执行"""
+
+    if not _should_enable_prompt_consultant_mode(message):
+        return base_prompt
+
+    return f"""{base_prompt}
+
+当前用户很可能希望你充当“提示词顾问”。
+如果用户在请求提示词、参考图反推、角色/场景推导，请优先输出最适合 Google Imagen 3 Pro 的格式。
+默认输出结构：
+1. 一句简短中文说明
+2. 最终 prompt
+
+写作要求：
+- 最终 prompt 必须是一整段可直接复制使用的英文自然语言描述
+- 优先使用适合 Imagen 3 Pro 的描述式结构，而不是标签堆砌
+- 默认不输出反向提示词、negative prompt、JSON、分栏清单
+- 只有当用户明确要求多个版本时，才额外提供 Version A / Version B
+- 最终 prompt 应尽量自然地覆盖主体、场景、构图、光照、材质、风格和必要约束
+除非用户明确要求，否则不要输出 JSON。"""
+
+
+def _parse_json_object_response(text: str) -> dict:
+    cleaned = (text or "").strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*\n", "", cleaned)
+        cleaned = re.sub(r"\n```\s*$", "", cleaned)
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        json_match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+        if not json_match:
+            raise
+        return json.loads(json_match.group())
+
 
 # Agent 3 辅助函数
 def compress_image_for_vision(base64_str: str, max_size_mb: float = 3.5) -> str:
@@ -660,6 +910,7 @@ JSON输出：
 class DirectChatRequest(BaseModel):
     message: str
     image_data: Optional[str] = None
+    image_datas: Optional[List[str]] = None
 
 class DirectChatResponse(BaseModel):
     reply: str
@@ -670,21 +921,29 @@ async def direct_chat(request: DirectChatRequest, http_request: Request, db: Ses
     try:
         client_ip = extract_client_ip(http_request)
         check_and_increment_ip_limit(db, client_ip, "direct_chat", FREE_CHAT_DAILY_LIMIT, period="day")
+        reference_images = _normalize_reference_images(
+            image_data=request.image_data,
+            image_datas=request.image_datas,
+        )
 
-        system_prompt = """你是 NeoVista 的友好助手。你可以：
-- 回答设计相关的问题（建筑、景观、规划、室内、产品等）
-- 进行日常对话和闲聊
-- 提供创意灵感和建议
-- 回答技术问题
-
-你不需要推荐模板或整理生图参数，只需要自然地对话即可。"""
+        system_prompt = _build_direct_chat_system_prompt(request.message)
 
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": request.message}
+            _build_chat_user_message_with_images(request.message, reference_images),
         ]
 
-        reply_raw = await chat_flash(messages, json_mode=False)
+        if reference_images:
+            prompt = _build_multimodal_prompt_from_messages([
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": request.message},
+            ])
+            reply_raw = await chat_pro_multimodal_image(
+                prompt,
+                _compose_reference_image_bytes(reference_images),
+            )
+        else:
+            reply_raw = await chat_flash(messages, json_mode=False)
 
         return DirectChatResponse(reply=reply_raw)
 
@@ -700,6 +959,10 @@ async def workspace_chat(request: WorkspaceChatRequest, http_request: Request, d
     try:
         client_ip = extract_client_ip(http_request)
         check_and_increment_ip_limit(db, client_ip, "workspace_chat", FREE_AGENT_CHAT_DAILY_LIMIT, period="day")
+        reference_images = _normalize_reference_images(
+            image_data=request.image_data,
+            image_datas=request.image_datas,
+        )
 
         with open('templates_v2.json', 'r', encoding='utf-8') as f:
             templates = json.load(f)
@@ -749,21 +1012,34 @@ async def workspace_chat(request: WorkspaceChatRequest, http_request: Request, d
         # 构建消息：system + 用户对话历史（限20轮）
         trimmed = request.messages[-40:]  # 20轮 = 40条消息
         messages = [{"role": "system", "content": workspace_system}]
-        for m in trimmed:
+        last_index = len(trimmed) - 1
+        for index, m in enumerate(trimmed):
             if m.role in ("user", "assistant"):
-                messages.append({"role": m.role, "content": m.content})
+                if m.role == "user" and index == last_index and reference_images:
+                    messages.append(_build_chat_user_message_with_images(m.content, reference_images))
+                else:
+                    messages.append({"role": m.role, "content": m.content})
 
         # 工作区聊天按 Agent 模式显式选择渠道；复杂视觉审图由单独接口承担
-        model_used = select_workspace_chat_model(request.agent_mode)
+        model_used = select_workspace_chat_model(
+            request.agent_mode,
+            has_reference_images=bool(reference_images),
+        )
 
-        if model_used == "pro":
+        if reference_images:
+            multimodal_prompt = _build_multimodal_prompt_from_messages(messages)
+            reply_raw = await chat_pro_multimodal_image(
+                multimodal_prompt,
+                _compose_reference_image_bytes(reference_images),
+            )
+        elif model_used == "pro":
             reply_raw = await chat_pro(messages)
         else:
             reply_raw = await chat_flash(messages, json_mode=True)
 
         # 尝试解析 JSON
         try:
-            parsed = json.loads(reply_raw)
+            parsed = _parse_json_object_response(reply_raw)
             reply_text = parsed.get("reply", reply_raw)
             ready = parsed.get("ready_to_generate", False)
             tpl_id = parsed.get("suggested_template_id")
@@ -816,6 +1092,10 @@ async def generate_image(
     print(f"custom_prompt_structure: {request.custom_prompt_structure}")
     print(f"custom_prompt_structure type: {type(request.custom_prompt_structure)}")
     print("="*60 + "\n")
+    reference_images = _normalize_reference_images(
+        image_data=request.image_data,
+        image_datas=request.image_datas,
+    )
 
     request_id = request.request_id or str(uuid.uuid4())
     idempotency_key = f"generate:{current_user.id}:{request_id}"
@@ -881,19 +1161,9 @@ async def generate_image(
     parts = [{"text": enhanced_prompt}]
 
     # 如果有图片数据，添加到 parts
-    if request.image_data:
-        print("包含画布上下文")
-        if request.image_data.startswith("data:"):
-            base64_data = request.image_data.split(",")[1]
-        else:
-            base64_data = request.image_data
-
-        parts.insert(0, {
-            "inlineData": {
-                "mimeType": "image/png",
-                "data": base64_data
-            }
-        })
+    if reference_images:
+        print(f"包含画布上下文，共 {len(reference_images)} 张参考图")
+        parts = _append_reference_image_parts(parts, reference_images)
 
     hold_txn = _create_generation_hold_or_raise(
         db,
@@ -914,7 +1184,7 @@ async def generate_image(
                 f"[GENERATE PAYLOAD] template_id={request.template_id}, "
                 f"selected_model={request.selected_model}, "
                 f"resolution={request.resolution}, aspect_ratio={request.aspect_ratio}, "
-                f"dimensions={{width}}x{{height}}, has_image={bool(request.image_data)}"
+                f"dimensions={{width}}x{{height}}, image_count={len(reference_images)}"
             ),
         )
         return _build_generation_success_response(
@@ -1018,28 +1288,16 @@ async def generate_diagram(
         # 检查是否为 i2i 模式
         is_i2i = template.get('is_i2i', False)
         if is_i2i:
-            # 从会话历史中查找最后一张用户上传的图片
-            history = json.loads(session.chat_history)
-            image_data = None
-            for msg in reversed(history):
-                if msg.get('role') == 'user' and 'image_data' in msg:
-                    image_data = msg['image_data']
-                    break
+            history = json.loads(session.chat_history or "[]")
+            reference_images = _resolve_generate_diagram_reference_images(
+                request_base_image=request.base_image,
+                request_base_images=request.base_images,
+                session_history=history,
+            )
 
-            if not image_data:
+            if not reference_images:
                 raise HTTPException(status_code=400, detail="此模版需要底图，但会话中未找到图片")
-
-            if image_data.startswith("data:"):
-                base64_data = image_data.split(",")[1]
-            else:
-                base64_data = image_data
-
-            parts.insert(0, {
-                "inlineData": {
-                    "mimeType": "image/png",
-                    "data": base64_data
-                }
-            })
+            parts = _append_reference_image_parts(parts, reference_images)
 
         hold_txn = _create_generation_hold_or_raise(
             db,
@@ -1186,24 +1444,10 @@ async def audit_diagram(
 
             # 尝试解析 JSON
             try:
-                result = json.loads(text)
+                result = _parse_json_object_response(text)
             except json.JSONDecodeError:
-                # 清理 Markdown 代码块标记
-                text = text.strip()
-                if text.startswith('```'):
-                    text = re.sub(r'^```(?:json)?\s*\n', '', text)
-                    text = re.sub(r'\n```\s*$', '', text)
-
-                try:
-                    result = json.loads(text)
-                except json.JSONDecodeError:
-                    # 尝试提取 JSON 部分
-                    json_match = re.search(r'\{.*\}', text, re.DOTALL)
-                    if json_match:
-                        result = json.loads(json_match.group())
-                    else:
-                        print(f"[审图] 无法解析 JSON，返回默认响应")
-                        return DEFAULT_AUDIT_RESPONSE
+                print(f"[审图] 无法解析 JSON，返回默认响应")
+                return DEFAULT_AUDIT_RESPONSE
 
             standardized = {
                 "is_pass": result.get("is_pass", False),

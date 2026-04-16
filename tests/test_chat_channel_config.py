@@ -65,6 +65,9 @@ class ChatChannelConfigTest(unittest.TestCase):
     def test_workspace_agent_chat_uses_pro_when_agent_mode_is_on(self):
         self.assertEqual(llm_service.select_workspace_chat_model(True), "pro")
 
+    def test_workspace_chat_with_reference_images_uses_pro(self):
+        self.assertEqual(llm_service.select_workspace_chat_model(False, has_reference_images=True), "pro")
+
 
 if __name__ == "__main__":
     unittest.main()
