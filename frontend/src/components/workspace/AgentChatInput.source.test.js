@@ -20,3 +20,12 @@ test('AgentChatInput resolves request payloads from plural reference images', ()
   assert.match(source, /directChat\(userInput,\s*resolveImageDataList\(\)\)/);
   assert.match(source, /generateImage\(userInput,\s*null,\s*null,\s*resolveImageDataList\(\)\)/);
 });
+
+test('AgentChatInput exposes GPT Image 2.0 as a generation model option', () => {
+  assert.match(source, /<option value="gpt-image-2">GPT Image 2\.0<\/option>/);
+});
+
+test('AgentChatInput exposes follow-model aspect ratio as the first option', () => {
+  assert.match(source, /const ratios = \[\s*\{ value: 'auto', label: '跟随模型' \}/);
+  assert.match(source, /<option key=\{ratio\.value\} value=\{ratio\.value\}>\{ratio\.label\}<\/option>/);
+});

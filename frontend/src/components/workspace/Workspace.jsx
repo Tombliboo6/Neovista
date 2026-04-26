@@ -31,24 +31,20 @@ export default function Workspace() {
 
   return (
     <>
-      {/* 手机端降级提示 */}
-      <div className="md:hidden h-screen flex items-center justify-center px-8 text-center" style={{ background: 'var(--surface-0)' }}>
-        <div>
-          <div className="text-4xl mb-4">🖥️</div>
-          <p className="font-display font-bold text-white text-xl mb-2">请在桌面端使用</p>
-          <p className="text-white/40 text-sm">NeoVista 工作区需要较大屏幕以获得完整体验</p>
+      <div className="flex min-h-[100dvh] items-center justify-center px-8 text-center md:hidden" style={{ background: 'var(--surface-0)' }}>
+        <div className="max-w-sm rounded-2xl border px-6 py-7" style={{ background: 'var(--surface-1)', borderColor: 'var(--border-subtle)', boxShadow: 'var(--shadow-panel)' }}>
+          <p className="mb-2 font-display text-xl font-semibold text-white/90">请在桌面端打开工作区</p>
+          <p className="text-sm leading-6 text-white/45">NeoVista 画布、技能面板和图层工具需要更宽的操作空间。</p>
         </div>
       </div>
 
-      {/* 桌面/Pad 布局 */}
-      <div className="hidden md:flex h-screen overflow-hidden" style={{ background: 'var(--surface-0)' }}>
+      <div className="hidden h-[100dvh] overflow-hidden md:flex" style={{ background: 'var(--surface-0)' }}>
         <LeftNav />
         <div className="flex-1 relative overflow-hidden h-full">
           <CenterCanvas />
-          {/* Pad 端折叠按钮 */}
           <button
             onClick={() => setRightPanelOpen(!rightPanelOpen)}
-            className="lg:hidden absolute top-3 right-3 z-10 p-2 rounded-lg transition hover:bg-white/10"
+            className="absolute right-3 top-3 z-10 rounded-lg p-2 transition hover:bg-white/10 lg:hidden"
             style={{ background: 'var(--surface-1)', border: '1px solid var(--border-subtle)' }}
             title={rightPanelOpen ? '收起面板' : '展开面板'}
           >

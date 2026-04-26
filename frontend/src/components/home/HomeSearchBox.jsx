@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Search, Paperclip, Image, Box } from 'lucide-react';
+import { ArrowRight, Box, Image, MapPin, Paperclip, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function HomeSearchBox() {
@@ -7,6 +7,7 @@ export default function HomeSearchBox() {
   const inputRef = useRef(null);
   const [query, setQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const handleGlobalKeydown = (e) => {
@@ -22,44 +23,113 @@ export default function HomeSearchBox() {
   const handleKeyDown = async (e) => {
     if (e.key === 'Enter' && !e.shiftKey && query.trim()) {
       e.preventDefault();
+      setIsSubmitting(true);
       const newSessionId = crypto.randomUUID();
       navigate('/workspace', { state: { sessionId: newSessionId, initMessage: query.trim() } });
     }
   };
 
+  const tools = [
+    { icon: <Paperclip size={15} />, title: '附件', label: '资料' },
+    { icon: <Image size={15} />, title: '上传图片', label: '底图' },
+    { icon: <Box size={15} />, title: '3D模型', label: '模型' },
+    { icon: <MapPin size={15} />, title: '地理定位', label: '区位' },
+  ];
+
   return (
-    <div className="w-full max-w-3xl mx-auto py-32 px-4">
+    <section className="mx-auto w-full max-w-[1120px] px-4 pb-8 pt-28 sm:px-6 lg:pt-32">
+      <div className="mb-8 grid gap-4 md:grid-cols-[1fr_18rem] md:items-end">
+        <div>
+          <p className="mb-3 text-xs uppercase text-white/40">NeoVista Design Console</p>
+          <h1 className="max-w-3xl font-display text-4xl font-semibold leading-tight text-white/90 md:text-6xl">
+            用一句设计意图，启动专业分析图工作流
+          </h1>
+        </div>
+        <div className="hidden border-l pl-5 text-sm leading-6 text-white/45 md:block" style={{ borderColor: 'var(--border-subtle)' }}>
+          场地语境、环境性能、概念体块、流线组织与成果展示，统一进入同一个创作入口。
+        </div>
+      </div>
+
       <div
-        className="relative rounded-2xl border px-6 py-5 flex items-center gap-4 transition-all duration-300"
+        className="relative overflow-hidden rounded-[28px] border p-4 transition-all duration-300 sm:p-5"
         style={{
           background: 'var(--surface-1)',
-          borderColor: isFocused ? 'var(--brand-blue)' : 'var(--border-subtle)',
-          boxShadow: isFocused ? '0 0 0 3px rgba(37,99,235,0.15), 0 8px 30px rgba(0,0,0,0.3)' : '0 8px 30px rgba(0,0,0,0.2)',
+          borderColor: isFocused ? 'var(--accent-primary)' : 'var(--border-subtle)',
+          boxShadow: isFocused ? '0 0 0 3px var(--accent-primary-soft), var(--shadow-soft)' : 'var(--shadow-panel)',
         }}
       >
-        <Search size={20} className="flex-shrink-0" style={{ color: isFocused ? 'var(--brand-blue)' : 'rgba(255,255,255,0.3)' }} />
+        <div className="flex items-start gap-4">
+          <div
+            className="mt-1 hidden h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl sm:flex"
+            style={{ background: 'var(--accent-primary-soft)', color: 'var(--accent-primary-strong)' }}
+          >
+            <Search size={19} />
+          </div>
 
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          placeholder="描述你的设计需求，AI 将为你生成专业分析图..."
-          className="flex-1 text-lg bg-transparent focus:ring-0 focus:outline-none placeholder-white/25 text-white/90"
-        />
+          <textarea
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            placeholder="例如：为滨水更新片区生成场地肌理、慢行流线与生态滞洪关系分析图"
+            disabled={isSubmitting}
+            className="min-h-[112px] flex-1 resize-none bg-transparent text-lg leading-8 text-white/90 placeholder-white/25 focus:outline-none disabled:opacity-60"
+          />
+        </div>
 
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {[{ icon: Paperclip, title: '附件' }, { icon: Image, title: '上传图片' }, { icon: Box, title: '3D模型' }].map(({ icon: Icon, title }) => (
-            <button key={title} className="p-2 rounded-lg transition hover:bg-white/10" title={title}>
-              <Icon size={18} className="text-white/30 hover:text-white/60 transition" />
+        <div className="mt-5 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: 'var(--border-subtle)' }}>
+          <div className="flex flex-wrap items-center gap-2">
+            {tools.map(({ icon, title, label }) => (
+              <button
+                key={title}
+                type="button"
+                className="flex items-center gap-2 rounded-full px-3 py-2 text-xs text-white/50 transition hover:bg-white/10 hover:text-white/75 active:scale-[0.98]"
+                title={title}
+              >
+                {icon}
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (!query.trim() || isSubmitting) return;
+              setIsSubmitting(true);
+              const newSessionId = crypto.randomUUID();
+              navigate('/workspace', { state: { sessionId: newSessionId, initMessage: query.trim() } });
+            }}
+            disabled={!query.trim() || isSubmitting}
+            className="inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-40 active:scale-[0.98]"
+            style={{ background: query.trim() ? 'var(--accent-primary)' : 'var(--surface-3)' }}
+          >
+            <span>{isSubmitting ? '进入工作区' : '开始分析'}</span>
+            <ArrowRight size={15} />
+          </button>
+        </div>
+      </div>
+
+      {!query.trim() && (
+        <div className="mt-4 flex flex-wrap gap-2 text-xs text-white/40">
+          {['场地与语境分析', '环境与物理性能', '概念与体块推演'].map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => {
+                setQuery(`生成${item}图，要求保留清晰标注、轴测空间关系和专业图例。`);
+                inputRef.current?.focus();
+              }}
+              className="rounded-full border px-3 py-1.5 transition hover:text-white/70"
+              style={{ borderColor: 'var(--border-subtle)', background: 'rgba(255,255,255,0.025)' }}
+            >
+              {item}
             </button>
           ))}
         </div>
-      </div>
-      <p className="text-center text-white/25 text-xs mt-3">按 <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/40 font-mono">/</kbd> 快速聚焦</p>
-    </div>
+      )}
+    </section>
   );
 }

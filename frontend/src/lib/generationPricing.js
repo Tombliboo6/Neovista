@@ -9,6 +9,7 @@ export const BASE_RESOLUTION_PRICING = {
 const MODEL_SURCHARGE_PER_IMAGE = {
   'nano-banana-2': 0,
   'nano-banana-pro': 30,
+  'gpt-image-2': 0,
 };
 
 export const RESOLUTION_PRICING = BASE_RESOLUTION_PRICING;

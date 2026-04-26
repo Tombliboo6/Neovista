@@ -6,13 +6,10 @@ export default function FabricCanvas() {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const fabricInstanceRef = useRef(null);
-  const generatedImage = useAppStore((state) => state.generatedImage);
   const drawingMode = useAppStore((state) => state.drawingMode);
   const setFabricInstance = useAppStore((state) => state.setFabricInstance);
   const saveCanvasState = useAppStore((state) => state.saveCanvasState);
   const deleteSelected = useAppStore((state) => state.deleteSelected);
-  const markCanvasDirty = useAppStore((state) => state.markCanvasDirty);
-  const isProgrammaticUpdate = useAppStore((state) => state.isProgrammaticUpdate);
 
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
@@ -24,7 +21,7 @@ export default function FabricCanvas() {
     const canvas = new fabric.Canvas(canvasRef.current, {
       width,
       height,
-      backgroundColor: '#ffffff',
+      backgroundColor: '#fbfaf6',
     });
 
     fabricInstanceRef.current = canvas;
@@ -46,25 +43,25 @@ export default function FabricCanvas() {
     const rect = new fabric.Rect({
       left: width / 2 - 100,
       top: height / 2 - 60,
-      fill: '#3b82f6',
+      fill: '#5f837a',
       width: 200,
       height: 120,
       rx: 8,
       ry: 8,
       shadow: {
-        color: 'rgba(0,0,0,0.2)',
+        color: 'rgba(30,27,20,0.16)',
         blur: 10,
         offsetX: 0,
         offsetY: 4,
       },
     });
 
-    const text = new fabric.Text('NeoVista Canvas Ready', {
-      left: width / 2 - 80,
+    const text = new fabric.Text('NeoVista Canvas', {
+      left: width / 2 - 70,
       top: height / 2 - 20,
       fill: '#ffffff',
       fontSize: 18,
-      fontFamily: 'Inter, sans-serif',
+      fontFamily: 'Avenir Next, PingFang SC, sans-serif',
     });
 
     canvas.add(rect, text);
@@ -161,7 +158,7 @@ export default function FabricCanvas() {
       window.removeEventListener('keydown', handleKeyDown);
       canvas.dispose();
     };
-  }, [deleteSelected]);
+  }, [deleteSelected, saveCanvasState, setFabricInstance]);
 
   useEffect(() => {
     const canvas = fabricInstanceRef.current;
@@ -169,7 +166,7 @@ export default function FabricCanvas() {
     canvas.isDrawingMode = drawingMode;
     if (drawingMode) {
       const brush = new fabric.PencilBrush(canvas);
-      brush.color = '#ef4444';
+      brush.color = '#b84a3a';
       brush.width = 3;
       canvas.freeDrawingBrush = brush;
     }

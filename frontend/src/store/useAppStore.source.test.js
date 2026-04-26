@@ -76,6 +76,9 @@ test('directChat requires auth before sending model requests', () => {
   const directChatBlock = directChatBlockMatch[0];
   assert.match(directChatBlock, /const\s*\{\s*workspaceChatMessages,\s*ensureAuthenticatedForModelAction\s*\}\s*=\s*get\(\);/);
   assert.match(directChatBlock, /if\s*\(!ensureAuthenticatedForModelAction\('继续对话'\)\)\s*\{\s*return;\s*\}/);
+  assert.match(directChatBlock, /const userMsg = \{ role: 'user', content: message, imageDatas: \[\.\.\.normalizedImages\] \};/);
+  assert.match(directChatBlock, /const apiMessages = prepareMessagesForAPI\(updated,\s*10,\s*4000\);/);
+  assert.match(directChatBlock, /messages:\s*apiMessages,/);
 });
 
 test('workspaceChat requires auth before sending agent requests', () => {
@@ -87,6 +90,19 @@ test('workspaceChat requires auth before sending agent requests', () => {
   const workspaceChatBlock = workspaceChatBlockMatch[0];
   assert.match(workspaceChatBlock, /ensureAuthenticatedForModelAction/);
   assert.match(workspaceChatBlock, /if\s*\(!ensureAuthenticatedForModelAction\('继续 Agent 对话'\)\)\s*\{\s*return;\s*\}/);
+  assert.match(workspaceChatBlock, /const userMsg = \{ role: 'user', content: message, imageDatas: \[\.\.\.normalizedImages\] \};/);
+});
+
+test('prepareMessagesForAPI keeps API payload text-only and trims long history by count and total chars', () => {
+  const prepareBlockMatch = storeSource.match(
+    /const prepareMessagesForAPI = \(messages, maxMessages = 10, maxTotalChars = 4000\) => \{[\s\S]*?return trimmedMessages\.map\(msg => \(\{\s*role: msg\.role,\s*content: msg\.content\s*\}\)\);\s*\};/
+  );
+
+  assert.ok(prepareBlockMatch, 'expected to find prepareMessagesForAPI block');
+  const prepareBlock = prepareBlockMatch[0];
+  assert.doesNotMatch(prepareBlock, /imageDatas/);
+  assert.match(prepareBlock, /if \(apiMessages.length > maxMessages\)/);
+  assert.match(prepareBlock, /while \(trimmedMessages.length > 1 && totalChars > maxTotalChars\)/);
 });
 
 test('triggerTemplateAdjustParams requires auth before calling the model', () => {
@@ -98,4 +114,8 @@ test('triggerTemplateAdjustParams requires auth before calling the model', () =>
   const triggerAdjustBlock = triggerAdjustBlockMatch[0];
   assert.match(triggerAdjustBlock, /ensureAuthenticatedForModelAction/);
   assert.match(triggerAdjustBlock, /if\s*\(!ensureAuthenticatedForModelAction\('调整模板参数'\)\)\s*\{\s*return;\s*\}/);
+});
+
+test('useAppStore defaults generation aspect ratio to follow-model auto', () => {
+  assert.match(storeSource, /aspectRatio:\s*'auto',\s*\/\/ 生图比例/);
 });

@@ -8,7 +8,7 @@ export default function ImageCarousel({ images, cardIndex = 0 }) {
   const loadingStrategy = getImageLoadingStrategy(cardIndex);
 
   if (!images || images.length === 0) {
-    return <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400">暂无图片</div>;
+    return <div className="flex h-48 w-full items-center justify-center text-white/40" style={{ background: 'var(--surface-2)' }}>暂无图片</div>;
   }
 
   const getImageUrl = (path) => {
@@ -18,7 +18,7 @@ export default function ImageCarousel({ images, cardIndex = 0 }) {
   // 如果刚好2张图，使用并排展示
   if (images.length === 2) {
     return (
-      <div className="w-full h-48 bg-gray-900 flex gap-1">
+      <div className="flex h-48 w-full gap-1" style={{ background: 'var(--surface-0)' }}>
         <div className="relative flex-1">
           <LazyImage
             src={getImageUrl(images[0])}
@@ -28,7 +28,7 @@ export default function ImageCarousel({ images, cardIndex = 0 }) {
             loading={loadingStrategy.loading}
             fetchPriority={loadingStrategy.fetchPriority}
           />
-          <div className="absolute top-2 left-2 bg-blue-500 text-white text-xs px-2 py-1 rounded">
+          <div className="absolute left-2 top-2 rounded px-2 py-1 text-xs text-white" style={{ background: 'var(--accent-primary)' }}>
             原图/底图
           </div>
         </div>
@@ -41,7 +41,7 @@ export default function ImageCarousel({ images, cardIndex = 0 }) {
             loading="lazy"
             fetchPriority="auto"
           />
-          <div className="absolute top-2 left-2 bg-green-500 text-white text-xs px-2 py-1 rounded">
+          <div className="absolute left-2 top-2 rounded px-2 py-1 text-xs text-white" style={{ background: '#4f7a45' }}>
             效果图
           </div>
         </div>
@@ -59,7 +59,7 @@ export default function ImageCarousel({ images, cardIndex = 0 }) {
   };
 
   return (
-    <div className="relative w-full h-48 bg-gray-900 group">
+    <div className="group relative h-48 w-full" style={{ background: 'var(--surface-0)' }}>
       <LazyImage
         src={getImageUrl(images[currentIndex])}
         alt={`图片 ${currentIndex + 1}`}

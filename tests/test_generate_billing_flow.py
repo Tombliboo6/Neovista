@@ -38,6 +38,31 @@ class _FakeAsyncClient:
         return self._response
 
 
+class _RecordingAsyncClient:
+    last_url = None
+    last_json = None
+    last_data = None
+    last_files = None
+    last_headers = None
+
+    def __init__(self, response):
+        self._response = response
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def post(self, url, **kwargs):
+        type(self).last_url = url
+        type(self).last_json = kwargs.get("json")
+        type(self).last_data = kwargs.get("data")
+        type(self).last_files = kwargs.get("files")
+        type(self).last_headers = kwargs.get("headers")
+        return self._response
+
+
 def _success_response():
     return httpx.Response(
         200,
@@ -65,6 +90,34 @@ def _error_response(status_code):
         status_code,
         request=httpx.Request("POST", "https://example.com"),
         json={"error": "upstream failed"},
+    )
+
+
+def _gpt_image_success_response():
+    return httpx.Response(
+        200,
+        request=httpx.Request("POST", "https://example.com/v1/images/generations"),
+        json={
+            "data": [
+                {
+                    "b64_json": "ZmFrZS1pbWFnZQ=="
+                }
+            ]
+        },
+    )
+
+
+def _gpt_image_url_success_response():
+    return httpx.Response(
+        200,
+        request=httpx.Request("POST", "https://example.com/v1/images/edits"),
+        json={
+            "data": [
+                {
+                    "url": "https://cdn.example.com/generated-image.png"
+                }
+            ]
+        },
     )
 
 
@@ -191,6 +244,165 @@ class GenerateBillingFlowTest(unittest.IsolatedAsyncioTestCase):
 
         self.db.refresh(self.user)
         self.assertEqual(self.user.credits, 200)
+
+    async def test_gpt_image_2_generate_uses_openai_images_endpoint_and_nano2_pricing(self):
+        request = main.GenerateRequest(
+            template_id=None,
+            user_params="test prompt for gpt image",
+            resolution="2K",
+            aspect_ratio="1:1",
+            num_images=1,
+            selected_model="gpt-image-2",
+        )
+
+        channels = (
+            main.APIChannel(name="Gemini", base_url="https://gemini.example.com", api_key="key-1", model="gemini-3.1-flash-image-preview"),
+            main.APIChannel(name="GPT Image", base_url="https://openai.example.com", api_key="key-2", model="gpt-image-2"),
+        )
+
+        _RecordingAsyncClient.last_url = None
+        _RecordingAsyncClient.last_json = None
+        _RecordingAsyncClient.last_headers = None
+
+        with patch.object(main, "API_CHANNELS", channels):
+            with patch.object(main.httpx, "AsyncClient", lambda timeout=60.0: _RecordingAsyncClient(_gpt_image_success_response())):
+                response = await main.generate_image(request, self.user, self.db)
+
+        self.assertEqual(response.remaining_credits, 150)
+        self.assertEqual(response.charged_credits, 50)
+        self.assertEqual(_RecordingAsyncClient.last_url, "https://openai.example.com/v1/images/generations")
+        self.assertEqual(_RecordingAsyncClient.last_json["model"], "gpt-image-2")
+        self.assertEqual(_RecordingAsyncClient.last_json["prompt"], "test prompt for gpt image")
+        self.assertEqual(_RecordingAsyncClient.last_json["size"], "1024x1024")
+        self.assertEqual(_RecordingAsyncClient.last_json["quality"], "medium")
+        self.assertEqual(_RecordingAsyncClient.last_headers["Authorization"], "Bearer key-2")
+
+    async def test_gpt_image_2_generate_with_auto_aspect_ratio_uses_auto_size(self):
+        request = main.GenerateRequest(
+            template_id=None,
+            user_params="test prompt for gpt image",
+            resolution="2K",
+            num_images=1,
+            aspect_ratio="auto",
+            selected_model="gpt-image-2",
+        )
+
+        channels = (
+            main.APIChannel(name="GPT Image", base_url="https://openai.example.com", api_key="key-2", model="gpt-image-2"),
+        )
+
+        _RecordingAsyncClient.last_url = None
+        _RecordingAsyncClient.last_json = None
+        _RecordingAsyncClient.last_headers = None
+
+        with patch.object(main, "API_CHANNELS", channels):
+            with patch.object(main.httpx, "AsyncClient", lambda timeout=60.0: _RecordingAsyncClient(_gpt_image_success_response())):
+                await main.generate_image(request, self.user, self.db)
+
+        self.assertEqual(_RecordingAsyncClient.last_url, "https://openai.example.com/v1/images/generations")
+        self.assertEqual(_RecordingAsyncClient.last_json["size"], "auto")
+
+    async def test_gemini_generate_with_auto_aspect_ratio_omits_fixed_image_config_ratio(self):
+        request = main.GenerateRequest(
+            template_id=None,
+            user_params="test prompt",
+            resolution="2K",
+            num_images=1,
+            aspect_ratio="auto",
+            selected_model="nano-banana-2",
+        )
+
+        channels = (
+            main.APIChannel(name="Gemini", base_url="https://gemini.example.com", api_key="key-1", model="gemini-3.1-flash-image-preview"),
+        )
+
+        _RecordingAsyncClient.last_url = None
+        _RecordingAsyncClient.last_json = None
+        _RecordingAsyncClient.last_headers = None
+
+        with patch.object(main, "API_CHANNELS", channels):
+            with patch.object(main.httpx, "AsyncClient", lambda timeout=60.0: _RecordingAsyncClient(_success_response())):
+                await main.generate_image(request, self.user, self.db)
+
+        generation_config = _RecordingAsyncClient.last_json["generationConfig"]
+        self.assertEqual(_RecordingAsyncClient.last_url, "https://gemini.example.com/v1/models/gemini-3.1-flash-image-preview:generateContent")
+        self.assertEqual(generation_config["responseModalities"], ["IMAGE"])
+        self.assertNotIn("imageConfig", generation_config)
+
+    async def test_gpt_image_2_with_reference_images_uses_edits_endpoint(self):
+        request = main.GenerateRequest(
+            template_id=None,
+            user_params="edit this reference image",
+            image_datas=["data:image/png;base64,ZmFrZS1yZWY="],
+            resolution="1K",
+            aspect_ratio="1:1",
+            num_images=1,
+            selected_model="gpt-image-2",
+        )
+
+        channels = (
+            main.APIChannel(name="GPT Image", base_url="https://openai.example.com", api_key="key-2", model="gpt-image-2"),
+        )
+
+        _RecordingAsyncClient.last_url = None
+        _RecordingAsyncClient.last_json = None
+        _RecordingAsyncClient.last_data = None
+        _RecordingAsyncClient.last_files = None
+        _RecordingAsyncClient.last_headers = None
+
+        with patch.object(main, "API_CHANNELS", channels):
+            with patch.object(main.httpx, "AsyncClient", lambda timeout=60.0: _RecordingAsyncClient(_gpt_image_success_response())):
+                response = await main.generate_image(request, self.user, self.db)
+
+        self.assertEqual(response.remaining_credits, 170)
+        self.assertEqual(response.charged_credits, 30)
+        self.assertEqual(_RecordingAsyncClient.last_url, "https://openai.example.com/v1/images/edits")
+        self.assertIsNone(_RecordingAsyncClient.last_json)
+        self.assertEqual(_RecordingAsyncClient.last_data["model"], "gpt-image-2")
+        self.assertEqual(_RecordingAsyncClient.last_data["prompt"], "edit this reference image")
+        self.assertEqual(_RecordingAsyncClient.last_data["size"], "1024x1024")
+        self.assertEqual(_RecordingAsyncClient.last_data["quality"], "low")
+        self.assertEqual(_RecordingAsyncClient.last_headers["Authorization"], "Bearer key-2")
+        self.assertEqual(len(_RecordingAsyncClient.last_files), 1)
+        self.assertEqual(_RecordingAsyncClient.last_files[0][0], "image[]")
+        self.assertEqual(_RecordingAsyncClient.last_files[0][1][0], "reference-1.png")
+        self.assertEqual(_RecordingAsyncClient.last_files[0][1][2], "image/png")
+
+    async def test_gpt_image_2_generate_diagram_i2i_uses_edits_endpoint_and_accepts_url_response(self):
+        request = main.GenerateDiagramRequest(
+            session_id="session-1",
+            resolution="2K",
+            num_images=1,
+            aspect_ratio="1:1",
+            selected_model="gpt-image-2",
+            base_images=["data:image/png;base64,ZmFrZS1yZWY="],
+        )
+        template_payload = json.dumps([
+            {
+                "id": "1.1.1",
+                "real_prompt": "标题 {title} 数据 {data} 输入 {user_input}",
+                "is_i2i": True,
+            }
+        ])
+
+        _RecordingAsyncClient.last_url = None
+        _RecordingAsyncClient.last_json = None
+        _RecordingAsyncClient.last_data = None
+        _RecordingAsyncClient.last_files = None
+        _RecordingAsyncClient.last_headers = None
+
+        with patch.object(main, "API_CHANNELS", (main.APIChannel(name="GPT Image", base_url="https://openai.example.com", api_key="key-2", model="gpt-image-2"),)):
+            with patch.object(main.httpx, "AsyncClient", lambda timeout=60.0: _RecordingAsyncClient(_gpt_image_url_success_response())):
+                with patch("builtins.open", mock_open(read_data=template_payload)):
+                    response = await main.generate_diagram(request, self.user, self.db)
+
+        self.assertEqual(response.remaining_credits, 150)
+        self.assertEqual(response.charged_credits, 50)
+        self.assertEqual(response.image_url, "https://cdn.example.com/generated-image.png")
+        self.assertEqual(_RecordingAsyncClient.last_url, "https://openai.example.com/v1/images/edits")
+        self.assertEqual(_RecordingAsyncClient.last_data["model"], "gpt-image-2")
+        self.assertIn("标题 测试标题 数据 测试数据 输入 测试补充", _RecordingAsyncClient.last_data["prompt"])
+        self.assertEqual(len(_RecordingAsyncClient.last_files), 1)
 
 
 if __name__ == "__main__":

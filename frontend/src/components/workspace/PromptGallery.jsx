@@ -14,7 +14,6 @@ export default function PromptGallery({ onClose }) {
   const [loading, setLoading] = useState(true);
   const [visibleCount, setVisibleCount] = useState(INITIAL_GALLERY_VISIBLE_COUNT);
   const loadMoreRef = useRef(null);
-  const generateImage = useAppStore((state) => state.generateImage);
   const setActiveSkill = useAppStore((state) => state.setActiveSkill);
   const setActiveTemplateName = useAppStore((state) => state.setActiveTemplateName);
 
@@ -41,10 +40,6 @@ export default function PromptGallery({ onClose }) {
   const filteredTemplates = selectedCategory === '全部'
     ? templates
     : templates.filter(t => getCategoryName(t) === selectedCategory);
-
-  useEffect(() => {
-    setVisibleCount(INITIAL_GALLERY_VISIBLE_COUNT);
-  }, [selectedCategory, filteredTemplates.length]);
 
   useEffect(() => {
     const target = loadMoreRef.current;
@@ -79,28 +74,31 @@ export default function PromptGallery({ onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl w-full max-w-6xl h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between p-6 border-b">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+      <div className="flex h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border" style={{ background: 'var(--surface-1)', borderColor: 'var(--border-subtle)', boxShadow: 'var(--shadow-soft)' }}>
+        <div className="flex items-center justify-between border-b p-6" style={{ borderColor: 'var(--border-subtle)' }}>
           <div>
-            <h2 className="text-2xl font-semibold text-gray-800">Prompt 模板库</h2>
-            <p className="text-sm text-gray-500 mt-1">精选专业建筑分析图提示词</p>
+            <h2 className="text-2xl font-semibold text-white/90">Prompt 模板库</h2>
+            <p className="mt-1 text-sm text-white/45">精选专业建筑分析图提示词</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+          <button onClick={onClose} className="rounded-lg p-2 text-white/50 transition hover:bg-white/10 hover:text-white/80" title="关闭">
             <X size={24} />
           </button>
         </div>
 
-        <div className="flex gap-2 px-6 py-4 border-b overflow-x-auto">
+        <div className="flex gap-2 overflow-x-auto border-b px-6 py-4" style={{ borderColor: 'var(--border-subtle)' }}>
           {categories.map(cat => (
             <button
               key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-4 py-2 rounded-lg whitespace-nowrap transition ${
-                selectedCategory === cat
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              onClick={() => {
+                setSelectedCategory(cat);
+                setVisibleCount(INITIAL_GALLERY_VISIBLE_COUNT);
+              }}
+              className="whitespace-nowrap rounded-full px-4 py-2 text-sm transition active:scale-[0.98]"
+              style={{
+                background: selectedCategory === cat ? 'var(--accent-primary)' : 'var(--surface-2)',
+                color: selectedCategory === cat ? '#fff' : 'var(--text-secondary)',
+              }}
             >
               {cat}
             </button>
@@ -110,30 +108,32 @@ export default function PromptGallery({ onClose }) {
         <div className="flex-1 overflow-y-auto p-6">
           {loading ? (
             <div className="flex items-center justify-center h-full">
-              <div className="text-gray-500">加载中...</div>
+              <div className="text-white/45">加载中...</div>
             </div>
           ) : (
             <div style={{ columnCount: 3, columnGap: '1.5rem' }}>
               {visibleTemplates.map((template, index) => (
-                <div key={template.id} className="bg-white border rounded-lg overflow-hidden hover:shadow-lg transition mb-6" style={{ breakInside: 'avoid' }}>
+                <div key={template.id} className="mb-6 overflow-hidden rounded-xl border transition hover:-translate-y-0.5" style={{ breakInside: 'avoid', background: 'var(--surface-0)', borderColor: 'var(--border-subtle)' }}>
                   <ImageCarousel images={template.images} cardIndex={index} />
                   <div className="p-4">
-                    <h3 className="text-sm font-semibold text-gray-800 mb-2">{template.title}</h3>
-                    <p className="text-sm text-gray-600 line-clamp-3 mb-4">
+                    <h3 className="mb-2 text-sm font-semibold text-white/85">{template.title}</h3>
+                    <p className="mb-4 line-clamp-3 text-sm leading-6 text-white/50">
                       {template.tips || template.display_text?.slice(0, 100) || template.real_prompt?.slice(0, 100)}
                     </p>
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleUsePrompt(template)}
-                        className="flex-1 px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition"
+                        className="flex-1 rounded-lg px-3 py-2 text-sm text-white transition active:scale-[0.98]"
+                        style={{ background: 'var(--accent-primary)' }}
                       >
                         使用此模板
                       </button>
                       <button
                         onClick={() => handleCopy(template.id, template.display_text || template.real_prompt || '')}
-                        className="px-3 py-2 border border-gray-300 rounded hover:bg-gray-50 transition"
+                        className="rounded-lg border px-3 py-2 text-white/60 transition hover:bg-white/10"
+                        style={{ borderColor: 'var(--border-subtle)' }}
                       >
-                        {copiedId === template.id ? <Check size={16} className="text-green-600" /> : <Copy size={16} />}
+                        {copiedId === template.id ? <Check size={16} className="text-green-400" /> : <Copy size={16} />}
                       </button>
                     </div>
                   </div>
@@ -144,7 +144,7 @@ export default function PromptGallery({ onClose }) {
         </div>
 
         {!loading && visibleCount < filteredTemplates.length && (
-          <div ref={loadMoreRef} className="pb-6 text-center text-xs text-gray-400">
+          <div ref={loadMoreRef} className="pb-6 text-center text-xs text-white/40">
             正在加载更多模板...
           </div>
         )}

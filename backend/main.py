@@ -3,13 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Union
 from sqlalchemy.orm import Session
 from functools import lru_cache
 import httpx
 import os
 import json
 import math
+import mimetypes
 import re
 import traceback
 import uuid
@@ -27,13 +28,16 @@ from billing_service import (
     refund_generation_hold,
 )
 from billing_router import router as billing_router
+from dashboard_router import router as dashboard_router
 from database import engine, Base, get_db
-from auth import router as auth_router, get_current_user
+from auth import router as auth_router, get_current_user, get_optional_user
+from monitoring_service import record_frontend_error_event, safe_record_generation_event
 from models import User, ChatSession
 from llm_service import (
     init_chat_channels,
     chat_flash,
     chat_pro,
+    chat_pro_multimodal,
     chat_pro_multimodal_image,
     chat_pro_multimodal_json,
     select_workspace_chat_model,
@@ -78,6 +82,7 @@ app.add_middleware(
 # 挂载鉴权路由
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(billing_router, prefix="/api/v1/billing", tags=["billing"])
+app.include_router(dashboard_router)
 
 # 多渠道配置
 @lru_cache(maxsize=1)
@@ -122,7 +127,7 @@ class GenerateRequest(BaseModel):
     custom_prompt_structure: Optional[dict] = None
     request_id: Optional[str] = None
     resolution: Optional[str] = "2K"  # 新增：1K/2K/4K
-    aspect_ratio: Optional[str] = "1:1"  # 新增：生图比例
+    aspect_ratio: Optional[str] = "auto"  # 新增：生图比例
     num_images: Optional[int] = 1
     selected_model: Optional[str] = "nano-banana-2"
 
@@ -158,6 +163,7 @@ class WorkspaceChatMessage(BaseModel):
     role: str
     content: str
 
+
 class WorkspaceChatRequest(BaseModel):
     messages: List[WorkspaceChatMessage]
     image_data: Optional[str] = None
@@ -183,7 +189,7 @@ class GenerateDiagramRequest(BaseModel):
     template_id: Optional[str] = None
     request_id: Optional[str] = None
     resolution: Optional[str] = "2K"
-    aspect_ratio: Optional[str] = "1:1"
+    aspect_ratio: Optional[str] = "auto"
     selected_model: Optional[str] = "nano-banana-2"
 
 class GenerateDiagramResponse(BaseModel):
@@ -193,10 +199,32 @@ class GenerateDiagramResponse(BaseModel):
     remaining_credits: int
     request_id: str
 
+class FrontendErrorPayload(BaseModel):
+    route: str
+    message: str
+    stack: Optional[str] = None
+    user_agent: Optional[str] = None
+
 class AuditDiagramRequest(BaseModel):
     session_id: Optional[str] = None
     template_id: Optional[str] = None
     image_base64: str
+
+@app.post("/api/v1/frontend-errors")
+async def create_frontend_error(
+    payload: FrontendErrorPayload,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db),
+):
+    record_frontend_error_event(
+        db,
+        user_id=current_user.id if current_user else None,
+        route=payload.route,
+        message=payload.message,
+        stack=payload.stack,
+        user_agent=payload.user_agent,
+    )
+    return {"ok": True}
 
 def _normalize_reference_images(
     image_data: Optional[str] = None,
@@ -207,6 +235,43 @@ def _normalize_reference_images(
     if image_data and isinstance(image_data, str) and image_data.strip():
         return [image_data]
     return []
+
+
+def _trim_text_context_messages(
+    messages: Optional[List["WorkspaceChatMessage"]] = None,
+    *,
+    max_messages: int = 10,
+    max_total_chars: int = 4000,
+) -> List["WorkspaceChatMessage"]:
+    normalized_messages: List[WorkspaceChatMessage] = []
+    for message in messages or []:
+        if not isinstance(message, WorkspaceChatMessage):
+            continue
+        if message.role not in ("user", "assistant"):
+            continue
+        if not isinstance(message.content, str) or not message.content.strip():
+            continue
+        normalized_messages.append(
+            WorkspaceChatMessage(role=message.role, content=message.content.strip())
+        )
+
+    trimmed_messages = normalized_messages[-max_messages:] if max_messages > 0 else normalized_messages
+    total_chars = sum(len(message.content) for message in trimmed_messages)
+    while len(trimmed_messages) > 1 and total_chars > max_total_chars:
+        trimmed_messages = trimmed_messages[1:]
+        total_chars = sum(len(message.content) for message in trimmed_messages)
+
+    if trimmed_messages and trimmed_messages[0].role != "user":
+        first_user_index = next(
+            (index for index, message in enumerate(trimmed_messages) if message.role == "user"),
+            -1,
+        )
+        if first_user_index > 0:
+            trimmed_messages = trimmed_messages[first_user_index:]
+        elif first_user_index == -1:
+            return []
+
+    return trimmed_messages
 
 
 def _build_chat_user_message_with_images(text: str, image_datas: Optional[List[str]] = None) -> dict:
@@ -400,7 +465,11 @@ def _build_direct_chat_system_prompt(message: Optional[str]) -> str:
 - 不要推荐模板
 - 不要进入 Agent 工作流
 - 不要返回 ready_to_generate、suggested_template_id、suggested_params 等控制字段
-- 保持回答自然、直接、可执行"""
+- 保持回答自然、直接、可执行
+
+语言要求：
+- 如果用户本轮消息主要是中文，必须用中文回答
+- 如果用户本轮消息主要是英文或其他非中文语言，可以按用户语言回答，但必须附带中文翻译，格式为“中文翻译：...”"""
 
     if not _should_enable_prompt_consultant_mode(message):
         return base_prompt
@@ -437,6 +506,92 @@ def _parse_json_object_response(text: str) -> dict:
         return json.loads(json_match.group())
 
 
+def _message_prefers_chinese(message: Optional[str]) -> bool:
+    if not isinstance(message, str):
+        return False
+    return bool(re.search(r"[\u4e00-\u9fff]", message))
+
+
+def _reply_has_chinese(text: Optional[str]) -> bool:
+    if not isinstance(text, str):
+        return False
+    return bool(re.search(r"[\u4e00-\u9fff]", text))
+
+
+async def _enforce_reply_language(user_message: Optional[str], reply_text: str) -> str:
+    """保证最终回复符合中文策略。"""
+    cleaned = (reply_text or "").strip()
+    if not cleaned:
+        return cleaned
+
+    if _message_prefers_chinese(user_message):
+        if _reply_has_chinese(cleaned):
+            return cleaned
+        rewritten = await chat_flash([
+            {
+                "role": "system",
+                "content": "请把给定答复改写成自然、准确、简洁的中文。只返回中文，不要解释。",
+            },
+            {
+                "role": "user",
+                "content": f"用户原始消息：{user_message or ''}\n\n当前答复：{cleaned}",
+            },
+        ], json_mode=False)
+        return (rewritten or "").strip() or cleaned
+
+    if "中文翻译：" in cleaned and _reply_has_chinese(cleaned):
+        return cleaned
+
+    if _reply_has_chinese(cleaned) and not re.search(r"[A-Za-z]", cleaned):
+        return cleaned
+
+    rewritten = await chat_flash([
+        {
+            "role": "system",
+            "content": (
+                "保留答复的原始语言内容，并在末尾补上一段中文翻译。"
+                "输出格式必须是原文后空一行，再写“中文翻译：<翻译内容>”。"
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"用户原始消息：{user_message or ''}\n\n当前答复：{cleaned}",
+        },
+    ], json_mode=False)
+    return (rewritten or "").strip() or cleaned
+
+
+async def _chat_with_reference_images(
+    prompt: str,
+    reference_images: Optional[List[str]] = None,
+    *,
+    json_mode: bool = False,
+) -> str:
+    normalized_images = _normalize_reference_images(image_datas=reference_images)
+    if not normalized_images:
+        raise ValueError("reference_images 不能为空")
+
+    try:
+        return await chat_pro_multimodal(
+            prompt,
+            normalized_images,
+            json_mode=json_mode,
+        )
+    except Exception as multimodal_error:
+        composed_image = _compose_reference_image_bytes(normalized_images)
+        if not composed_image:
+            raise multimodal_error
+
+        print(
+            "⚠️  多图 data URL 对话失败，回退为单张拼图发送："
+            f"{multimodal_error}"
+        )
+        return await chat_pro_multimodal_image(
+            prompt,
+            composed_image,
+        )
+
+
 # Agent 3 辅助函数
 def compress_image_for_vision(base64_str: str, max_size_mb: float = 3.5) -> str:
     """压缩图片到 3.5MB 以下"""
@@ -452,6 +607,10 @@ def compress_image_for_vision(base64_str: str, max_size_mb: float = 3.5) -> str:
     img.save(buffer, format='JPEG', quality=85, optimize=True)
     compressed = base64.b64encode(buffer.getvalue()).decode()
     return f"data:image/jpeg;base64,{compressed}"
+
+def _is_auto_aspect_ratio(aspect_ratio: Optional[str]) -> bool:
+    return not isinstance(aspect_ratio, str) or not aspect_ratio.strip() or aspect_ratio.strip().lower() == "auto"
+
 
 def get_dimensions_from_resolution_and_ratio(resolution: str, aspect_ratio: str) -> Tuple[int, int]:
     """根据画质和比例计算实际尺寸"""
@@ -503,6 +662,81 @@ def _extract_generated_image(data: dict) -> Optional[str]:
     return None
 
 
+def _extract_openai_generated_image(data: dict) -> Optional[str]:
+    for item in data.get("data") or []:
+        image_data = item.get("b64_json")
+        if isinstance(image_data, str) and image_data.strip():
+            return image_data
+        image_url = item.get("url")
+        if isinstance(image_url, str) and image_url.strip():
+            return image_url
+    return None
+
+
+def _is_openai_image_model(model_name: Optional[str]) -> bool:
+    return isinstance(model_name, str) and model_name.strip().lower().startswith("gpt-image")
+
+
+def _select_api_channels_for_model(selected_model: Optional[str] = None) -> Tuple[APIChannel, ...]:
+    wants_openai_image = _is_openai_image_model(selected_model)
+    filtered = tuple(
+        channel for channel in API_CHANNELS
+        if _is_openai_image_model(channel.model) == wants_openai_image
+    )
+    return filtered
+
+
+def _build_prompt_text_from_parts(parts: List[dict]) -> str:
+    text_parts = [
+        part.get("text", "").strip()
+        for part in parts
+        if isinstance(part, dict) and isinstance(part.get("text"), str) and part.get("text", "").strip()
+    ]
+    return "\n\n".join(text_parts).strip()
+
+
+def _resolve_openai_image_size(aspect_ratio: str) -> str:
+    if _is_auto_aspect_ratio(aspect_ratio):
+        return "auto"
+    portrait_ratios = {"3:4", "9:16"}
+    landscape_ratios = {"4:3", "16:9", "21:9"}
+    if aspect_ratio in portrait_ratios:
+        return "1024x1536"
+    if aspect_ratio in landscape_ratios:
+        return "1536x1024"
+    return "1024x1024"
+
+
+def _resolve_openai_image_quality(resolution: str) -> str:
+    return {
+        "1K": "low",
+        "2K": "medium",
+        "4K": "high",
+    }.get(resolution, "medium")
+
+
+def _decode_reference_image_upload(image_data: str, *, index: int) -> Tuple[str, bytes, str]:
+    mime_type = "image/png"
+    base64_data = image_data
+    if image_data.startswith("data:"):
+        header, base64_data = image_data.split(",", 1)
+        mime_type = header.split(":", 1)[1].split(";", 1)[0] or mime_type
+
+    extension = mimetypes.guess_extension(mime_type) or ".png"
+    if mime_type == "image/jpeg":
+        extension = ".jpg"
+    filename = f"reference-{index}{extension}"
+    return filename, base64.b64decode(base64_data), mime_type
+
+
+def _build_openai_image_edit_files(reference_images: Optional[List[str]] = None) -> List[Tuple[str, Tuple[str, bytes, str]]]:
+    files: List[Tuple[str, Tuple[str, bytes, str]]] = []
+    for index, image_data in enumerate(_normalize_reference_images(image_datas=reference_images), start=1):
+        filename, raw_bytes, mime_type = _decode_reference_image_upload(image_data, index=index)
+        files.append(("image[]", (filename, raw_bytes, mime_type)))
+    return files
+
+
 def _create_generation_hold_or_raise(
     db: Session,
     current_user: User,
@@ -540,39 +774,98 @@ async def _request_image_from_channels(
     parts: List[dict],
     resolution: str,
     aspect_ratio: str,
+    selected_model: Optional[str],
+    reference_images: Optional[List[str]] = None,
     payload_log: str,
 ) -> Tuple[str, str]:
-    width, height = get_dimensions_from_resolution_and_ratio(resolution, aspect_ratio)
+    width: Union[int, str]
+    height: Union[int, str]
+    if _is_auto_aspect_ratio(aspect_ratio):
+        width, height = "auto", "auto"
+    else:
+        width, height = get_dimensions_from_resolution_and_ratio(resolution, aspect_ratio)
     print(payload_log.format(width=width, height=height))
+
+    channels = _select_api_channels_for_model(selected_model)
+    if not channels:
+        raise UpstreamGenerationError(
+            last_error=None,
+            error_code="UPSTREAM_CHANNEL_NOT_CONFIGURED",
+            error_message=f"未找到适用于模型 {selected_model or 'default'} 的生图渠道",
+        )
 
     last_error = None
     error_code = "UPSTREAM_FAILED"
     error_message = "所有API渠道均失败"
 
-    for channel in API_CHANNELS:
+    for channel in channels:
         try:
             print(f"尝试渠道: {channel.name} (分辨率: {resolution}, 比例: {aspect_ratio}, 尺寸: {width}x{height})")
 
-            url = f"{channel.base_url}/v1/models/{channel.model}:generateContent"
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {channel.api_key}"
-            }
-            payload = {
-                "contents": [{"role": "user", "parts": parts}],
-                "generationConfig": {
-                    "responseModalities": ["IMAGE"],
-                    "imageConfig": {"aspectRatio": aspect_ratio}
+            headers = {"Authorization": f"Bearer {channel.api_key}"}
+            if _is_openai_image_model(channel.model):
+                openai_prompt = _build_prompt_text_from_parts(parts)
+                if reference_images:
+                    url = f"{channel.base_url}/v1/images/edits"
+                    payload = {
+                        "model": channel.model,
+                        "prompt": openai_prompt,
+                        "size": _resolve_openai_image_size(aspect_ratio),
+                        "quality": _resolve_openai_image_quality(resolution),
+                    }
+                    request_kwargs = {
+                        "data": payload,
+                        "files": _build_openai_image_edit_files(reference_images),
+                        "headers": headers,
+                    }
+                    timeout = 180.0
+                else:
+                    url = f"{channel.base_url}/v1/images/generations"
+                    payload = {
+                        "model": channel.model,
+                        "prompt": openai_prompt,
+                        "size": _resolve_openai_image_size(aspect_ratio),
+                        "quality": _resolve_openai_image_quality(resolution),
+                        "response_format": "b64_json",
+                    }
+                    request_kwargs = {
+                        "json": payload,
+                        "headers": {
+                            **headers,
+                            "Content-Type": "application/json",
+                        },
+                    }
+                    timeout = 120.0
+            else:
+                url = f"{channel.base_url}/v1/models/{channel.model}:generateContent"
+                payload = {
+                    "contents": [{"role": "user", "parts": parts}],
+                    "generationConfig": {
+                        "responseModalities": ["IMAGE"],
+                    }
                 }
-            }
+                if not _is_auto_aspect_ratio(aspect_ratio):
+                    payload["generationConfig"]["imageConfig"] = {"aspectRatio": aspect_ratio}
+                timeout = 60.0
+                request_kwargs = {
+                    "json": payload,
+                    "headers": {
+                        **headers,
+                        "Content-Type": "application/json",
+                    },
+                }
 
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(url, json=payload, headers=headers)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(url, **request_kwargs)
                 response.raise_for_status()
                 data = response.json()
 
             print(f"渠道 {channel.name} 成功")
-            image_data = _extract_generated_image(data)
+            image_data = (
+                _extract_openai_generated_image(data)
+                if _is_openai_image_model(channel.model)
+                else _extract_generated_image(data)
+            )
             if image_data:
                 return image_data, channel.name
 
@@ -649,8 +942,12 @@ def _build_generation_success_response(
     capture_generation_hold(db, hold_txn, provider_meta={"channel": provider_name})
     db.commit()
     db.refresh(current_user)
+    if image_data.startswith(("http://", "https://", "data:")):
+        image_url = image_data
+    else:
+        image_url = f"data:image/png;base64,{image_data}"
     return response_model(
-        image_url=f"data:image/png;base64,{image_data}",
+        image_url=image_url,
         timestamp=int(datetime.utcnow().timestamp() * 1000),
         charged_credits=abs(hold_txn.amount),
         remaining_credits=current_user.credits,
@@ -909,6 +1206,7 @@ JSON输出：
 
 class DirectChatRequest(BaseModel):
     message: str
+    messages: Optional[List[WorkspaceChatMessage]] = None
     image_data: Optional[str] = None
     image_datas: Optional[List[str]] = None
 
@@ -925,27 +1223,36 @@ async def direct_chat(request: DirectChatRequest, http_request: Request, db: Ses
             image_data=request.image_data,
             image_datas=request.image_datas,
         )
+        conversation_messages = _trim_text_context_messages(request.messages)
+        if not conversation_messages:
+            conversation_messages = [WorkspaceChatMessage(role="user", content=request.message.strip())]
 
-        system_prompt = _build_direct_chat_system_prompt(request.message)
+        latest_user_message = next(
+            (message.content for message in reversed(conversation_messages) if message.role == "user"),
+            request.message,
+        )
+        system_prompt = _build_direct_chat_system_prompt(latest_user_message)
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            _build_chat_user_message_with_images(request.message, reference_images),
-        ]
+        messages = [{"role": "system", "content": system_prompt}]
+        last_index = len(conversation_messages) - 1
+        for index, message in enumerate(conversation_messages):
+            if message.role == "user" and index == last_index and reference_images:
+                messages.append(_build_chat_user_message_with_images(message.content, reference_images))
+            else:
+                messages.append({"role": message.role, "content": message.content})
 
         if reference_images:
-            prompt = _build_multimodal_prompt_from_messages([
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": request.message},
-            ])
-            reply_raw = await chat_pro_multimodal_image(
+            prompt = _build_multimodal_prompt_from_messages(messages)
+            reply_raw = await _chat_with_reference_images(
                 prompt,
-                _compose_reference_image_bytes(reference_images),
+                reference_images,
             )
         else:
             reply_raw = await chat_flash(messages, json_mode=False)
 
-        return DirectChatResponse(reply=reply_raw)
+        reply_text = await _enforce_reply_language(latest_user_message, reply_raw)
+
+        return DirectChatResponse(reply=reply_text)
 
     except ValueError as e:
         raise HTTPException(status_code=429, detail=str(e))
@@ -1007,7 +1314,9 @@ async def workspace_chat(request: WorkspaceChatRequest, http_request: Request, d
 注意：
 - 只有当 title 和 data 都已确认时，才设 ready_to_generate=true
 - 如果参数还不够明确，设 ready_to_generate=false，继续追问
-- 回复要简洁专业，像一个资深建筑设计顾问"""
+- 回复要简洁专业，像一个资深建筑设计顾问
+- 如果用户本轮消息主要是中文，reply 必须用中文
+- 如果用户本轮消息主要是英文或其他非中文语言，reply 可以按用户语言回答，但必须附带中文翻译，格式为“中文翻译：...”"""
 
         # 构建消息：system + 用户对话历史（限20轮）
         trimmed = request.messages[-40:]  # 20轮 = 40条消息
@@ -1028,9 +1337,10 @@ async def workspace_chat(request: WorkspaceChatRequest, http_request: Request, d
 
         if reference_images:
             multimodal_prompt = _build_multimodal_prompt_from_messages(messages)
-            reply_raw = await chat_pro_multimodal_image(
+            reply_raw = await _chat_with_reference_images(
                 multimodal_prompt,
-                _compose_reference_image_bytes(reference_images),
+                reference_images,
+                json_mode=True,
             )
         elif model_used == "pro":
             reply_raw = await chat_pro(messages)
@@ -1040,12 +1350,12 @@ async def workspace_chat(request: WorkspaceChatRequest, http_request: Request, d
         # 尝试解析 JSON
         try:
             parsed = _parse_json_object_response(reply_raw)
-            reply_text = parsed.get("reply", reply_raw)
+            reply_text = await _enforce_reply_language(request.messages[-1].content if request.messages else "", parsed.get("reply", reply_raw))
             ready = parsed.get("ready_to_generate", False)
             tpl_id = parsed.get("suggested_template_id")
             params = parsed.get("suggested_params")
         except (json.JSONDecodeError, ValueError):
-            reply_text = reply_raw
+            reply_text = await _enforce_reply_language(request.messages[-1].content if request.messages else "", reply_raw)
             ready = False
             tpl_id = None
             params = None
@@ -1163,7 +1473,8 @@ async def generate_image(
     # 如果有图片数据，添加到 parts
     if reference_images:
         print(f"包含画布上下文，共 {len(reference_images)} 张参考图")
-        parts = _append_reference_image_parts(parts, reference_images)
+        if not _is_openai_image_model(request.selected_model):
+            parts = _append_reference_image_parts(parts, reference_images)
 
     hold_txn = _create_generation_hold_or_raise(
         db,
@@ -1180,6 +1491,8 @@ async def generate_image(
             parts=parts,
             resolution=request.resolution,
             aspect_ratio=request.aspect_ratio,
+            selected_model=request.selected_model,
+            reference_images=reference_images,
             payload_log=(
                 f"[GENERATE PAYLOAD] template_id={request.template_id}, "
                 f"selected_model={request.selected_model}, "
@@ -1187,7 +1500,7 @@ async def generate_image(
                 f"dimensions={{width}}x{{height}}, image_count={len(reference_images)}"
             ),
         )
-        return _build_generation_success_response(
+        response = _build_generation_success_response(
             GenerateResponse,
             db=db,
             current_user=current_user,
@@ -1196,10 +1509,39 @@ async def generate_image(
             image_data=image_data,
             provider_name=provider_name,
         )
+        safe_record_generation_event(
+            db,
+            request_id=request_id,
+            user_id=current_user.id,
+            entrypoint="generate",
+            template_id=request.template_id,
+            selected_model=request.selected_model,
+            provider_name=provider_name,
+            resolution=request.resolution,
+            aspect_ratio=request.aspect_ratio,
+            num_images=request.num_images or 1,
+            status="SUCCESS",
+        )
+        return response
     except UpstreamGenerationError as e:
         _refund_generation_hold_safely(
             db,
             hold_txn,
+            error_code=e.error_code,
+            error_message=e.error_message,
+        )
+        safe_record_generation_event(
+            db,
+            request_id=request_id,
+            user_id=current_user.id,
+            entrypoint="generate",
+            template_id=request.template_id,
+            selected_model=request.selected_model,
+            provider_name=None,
+            resolution=request.resolution,
+            aspect_ratio=request.aspect_ratio,
+            num_images=request.num_images or 1,
+            status="FAILED",
             error_code=e.error_code,
             error_message=e.error_message,
         )
@@ -1208,6 +1550,21 @@ async def generate_image(
         _refund_generation_hold_safely(
             db,
             hold_txn,
+            error_code="INTERNAL_EXCEPTION",
+            error_message=str(e),
+        )
+        safe_record_generation_event(
+            db,
+            request_id=request_id,
+            user_id=current_user.id,
+            entrypoint="generate",
+            template_id=request.template_id,
+            selected_model=request.selected_model,
+            provider_name=None,
+            resolution=request.resolution,
+            aspect_ratio=request.aspect_ratio,
+            num_images=request.num_images or 1,
+            status="FAILED",
             error_code="INTERNAL_EXCEPTION",
             error_message=str(e),
         )
@@ -1286,6 +1643,7 @@ async def generate_diagram(
         parts = [{"text": final_prompt}]
 
         # 检查是否为 i2i 模式
+        reference_images: List[str] = []
         is_i2i = template.get('is_i2i', False)
         if is_i2i:
             history = json.loads(session.chat_history or "[]")
@@ -1297,7 +1655,8 @@ async def generate_diagram(
 
             if not reference_images:
                 raise HTTPException(status_code=400, detail="此模版需要底图，但会话中未找到图片")
-            parts = _append_reference_image_parts(parts, reference_images)
+            if not _is_openai_image_model(request.selected_model):
+                parts = _append_reference_image_parts(parts, reference_images)
 
         hold_txn = _create_generation_hold_or_raise(
             db,
@@ -1314,6 +1673,8 @@ async def generate_diagram(
                 parts=parts,
                 resolution=request.resolution,
                 aspect_ratio=request.aspect_ratio,
+                selected_model=request.selected_model,
+                reference_images=reference_images,
                 payload_log=(
                     f"[GENERATE_DIAGRAM PAYLOAD] template_id={session.template_id}, "
                     f"selected_model={request.selected_model}, "
@@ -1321,7 +1682,7 @@ async def generate_diagram(
                     "dimensions={width}x{height}"
                 ),
             )
-            return _build_generation_success_response(
+            response = _build_generation_success_response(
                 GenerateDiagramResponse,
                 db=db,
                 current_user=current_user,
@@ -1330,10 +1691,39 @@ async def generate_diagram(
                 image_data=image_data,
                 provider_name=provider_name,
             )
+            safe_record_generation_event(
+                db,
+                request_id=request_id,
+                user_id=current_user.id,
+                entrypoint="generate_diagram",
+                template_id=session.template_id,
+                selected_model=request.selected_model,
+                provider_name=provider_name,
+                resolution=request.resolution,
+                aspect_ratio=request.aspect_ratio,
+                num_images=request.num_images or 1,
+                status="SUCCESS",
+            )
+            return response
         except UpstreamGenerationError as e:
             _refund_generation_hold_safely(
                 db,
                 hold_txn,
+                error_code=e.error_code,
+                error_message=e.error_message,
+            )
+            safe_record_generation_event(
+                db,
+                request_id=request_id,
+                user_id=current_user.id,
+                entrypoint="generate_diagram",
+                template_id=session.template_id,
+                selected_model=request.selected_model,
+                provider_name=None,
+                resolution=request.resolution,
+                aspect_ratio=request.aspect_ratio,
+                num_images=request.num_images or 1,
+                status="FAILED",
                 error_code=e.error_code,
                 error_message=e.error_message,
             )
@@ -1342,6 +1732,21 @@ async def generate_diagram(
             _refund_generation_hold_safely(
                 db,
                 hold_txn,
+                error_code="INTERNAL_EXCEPTION",
+                error_message=str(e),
+            )
+            safe_record_generation_event(
+                db,
+                request_id=request_id,
+                user_id=current_user.id,
+                entrypoint="generate_diagram",
+                template_id=session.template_id,
+                selected_model=request.selected_model,
+                provider_name=None,
+                resolution=request.resolution,
+                aspect_ratio=request.aspect_ratio,
+                num_images=request.num_images or 1,
+                status="FAILED",
                 error_code="INTERNAL_EXCEPTION",
                 error_message=str(e),
             )

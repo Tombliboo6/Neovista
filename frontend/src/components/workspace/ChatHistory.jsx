@@ -1,6 +1,5 @@
 import { useAppStore } from '../../store/useAppStore';
-import { User, Bot, Trash2, CheckCircle, RotateCcw, FileSearch, Info, ThumbsUp, AlertTriangle, Lightbulb } from 'lucide-react';
-import { useState } from 'react';
+import { Trash2, CheckCircle, RotateCcw, FileSearch, ThumbsUp, AlertTriangle, Lightbulb } from 'lucide-react';
 import GenerateParamsModal from './GenerateParamsModal';
 import toast from 'react-hot-toast';
 import { resolveReferenceImages } from '../../lib/referenceImages.js';
@@ -42,7 +41,7 @@ function AuditCard({ data }) {
       {/* 建议 */}
       {data.suggestions?.length > 0 && (
         <div className="px-3 py-2.5">
-          <div className="flex items-center gap-1 text-blue-400 font-medium mb-1.5">
+          <div className="mb-1.5 flex items-center gap-1 font-medium" style={{ color: 'var(--accent-primary-strong)' }}>
             <Lightbulb size={11} /> 建议
           </div>
           {data.suggestions.map((item, i) => (
@@ -66,7 +65,6 @@ export default function ChatHistory() {
   const isGenerationCancelable = useAppStore((s) => s.isGenerationCancelable);
   const isWorkspaceChatLoading = useAppStore((s) => s.isWorkspaceChatLoading);
   const setResolution = useAppStore((s) => s.setResolution);
-  const resolution = useAppStore((s) => s.resolution);
   const setNumImages = useAppStore((s) => s.setNumImages);
   const auditDiagram = useAppStore((s) => s.auditDiagram);
   const showGenerateModal = useAppStore((s) => s.showGenerateModal);
@@ -84,7 +82,7 @@ export default function ChatHistory() {
 
   const handleGenerateClick = () => {
     if (!selectedModel) {
-      addSystemMessage('⚠️ 请先在右下角选择生图模型（Nano Banana 2 或 Nano Banana Pro）');
+      addSystemMessage('提示：请先在右下角选择生图模型（Nano 2、Nano Pro 或 GPT Image 2.0）');
       return;
     }
     setShowGenerateModal(true);
@@ -143,11 +141,21 @@ export default function ChatHistory() {
     }
   };
 
-  if (workspaceChatMessages.length === 0 && !readyToGenerate && !activeTemplateName) return null;
+  if (workspaceChatMessages.length === 0 && !readyToGenerate && !activeTemplateName) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+        <div className="flex flex-1 items-center justify-center px-5 text-center">
+          <div className="max-w-[260px]">
+            <p className="mb-2 text-sm font-medium text-white/70">等待你的图面指令</p>
+            <p className="text-xs leading-5 text-white/40">选择模板、上传底图，或直接描述你想生成的分析图。</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-      {/* 标题栏 */}
+    <div className="flex min-h-0 flex-1 flex-col" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
       <div className="flex items-center justify-between px-4 py-2" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
         <span className="text-xs font-medium text-white/40">对话历史</span>
         <button onClick={clearChatHistory} className="p-1 rounded transition hover:bg-white/10" title="清空历史">
@@ -155,32 +163,45 @@ export default function ChatHistory() {
         </button>
       </div>
 
-      {/* 模板已加载操作区 */}
       {activeTemplateName && (
-        <div className="mx-3 my-2 p-3 rounded-lg" style={{ background: 'var(--surface-2)', border: '1px solid rgba(37,99,235,0.3)' }}>
+        <div className="mx-3 my-2 rounded-xl p-3" style={{ background: 'var(--surface-2)', border: '1px solid var(--accent-primary-soft)' }}>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-blue-400 font-medium truncate">{activeTemplateName}</span>
+            <span className="truncate text-xs font-medium" style={{ color: 'var(--accent-primary-strong)' }}>{activeTemplateName}</span>
             <button onClick={clearTemplateState} className="text-xs text-white/30 hover:text-white/60 ml-2 flex-shrink-0">清除</button>
           </div>
           <div className="flex gap-2">
-            <button onClick={handleGenerateClick} className="flex-1 px-3 py-1.5 bg-brand-blue text-white text-xs rounded-lg hover:bg-blue-500 transition">直接生图</button>
+            <button onClick={handleGenerateClick} className="flex-1 rounded-lg px-3 py-1.5 text-xs text-white transition active:scale-[0.98]" style={{ background: 'var(--accent-primary)' }}>直接生图</button>
             <button onClick={handleAdjustParams} className="flex-1 px-3 py-1.5 text-white/60 text-xs rounded-lg transition hover:bg-white/10" style={{ border: '1px solid var(--border-subtle)' }}>调整参数</button>
           </div>
         </div>
       )}
 
-      {/* Feed 流消息列表 */}
       <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-2">
         {workspaceChatMessages.map((msg, idx) => (
           <div key={idx}>
             {msg.role === 'user' ? (
               <div className="flex justify-end">
-                <div className="max-w-[85%] px-3 py-2 rounded-xl text-xs text-white/80" style={{ background: 'var(--surface-2)' }}>
-                  {msg.content}
+                <div className="max-w-[85%] space-y-2">
+                  {msg.imageDatas?.length > 0 && (
+                    <div className="grid grid-cols-2 gap-2">
+                      {msg.imageDatas.map((imageSrc, imageIndex) => (
+                        <img
+                          key={`${idx}-${imageIndex}`}
+                          src={imageSrc}
+                          alt=""
+                          className="w-full rounded-xl object-cover"
+                          style={{ maxHeight: '160px' }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <div className="max-w-[85%] rounded-xl px-3 py-2 text-xs text-white/80" style={{ background: 'var(--surface-2)' }}>
+                    {msg.content}
+                  </div>
                 </div>
               </div>
             ) : msg.role === 'system' ? (
-              <div className="px-3 py-2 rounded-lg text-xs text-amber-400/80" style={{ background: 'rgba(245,158,11,0.08)' }}>
+              <div className="rounded-lg px-3 py-2 text-xs" style={{ background: 'var(--accent-premium-soft)', color: 'var(--accent-premium)' }}>
                 {msg.content}
               </div>
             ) : (
@@ -201,8 +222,8 @@ export default function ChatHistory() {
                     {msg.templateName && <p className="text-xs text-white/25 px-1">模板：{msg.templateName}</p>}
                     <button
                       onClick={() => auditDiagram(msg.imageUrl)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-blue-400 transition hover:bg-blue-500/10"
-                      style={{ border: '1px solid rgba(37,99,235,0.3)' }}
+                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition hover:bg-white/10"
+                      style={{ border: '1px solid var(--border-subtle)', color: 'var(--accent-primary-strong)' }}
                     >
                       <FileSearch size={12} /> 审图分析
                     </button>
@@ -213,12 +234,11 @@ export default function ChatHistory() {
           </div>
         ))}
 
-        {/* 加载动画 */}
         {(isGenerating || isWorkspaceChatLoading) && (
           <div className="flex items-center gap-2 px-3 py-2">
             <div className="flex gap-1">
               {[0, 150, 300].map(delay => (
-                <span key={delay} className="w-1.5 h-1.5 rounded-full bg-brand-blue animate-pulse" style={{ animationDelay: `${delay}ms` }} />
+                <span key={delay} className="h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: 'var(--accent-primary)', animationDelay: `${delay}ms` }} />
               ))}
             </div>
             <span className="text-xs text-white/40">
@@ -229,7 +249,6 @@ export default function ChatHistory() {
           </div>
         )}
 
-        {/* 参数就绪确认区 */}
         {readyToGenerate && suggestedParams && (activeSkill || suggestedTemplateId) && (
           <div className="p-3 rounded-xl" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
             <p className="text-xs text-green-400 font-medium mb-2">参数已就绪，准备生成</p>

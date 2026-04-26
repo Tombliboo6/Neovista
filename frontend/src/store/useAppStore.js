@@ -118,7 +118,7 @@ const parseAgentControlPayload = (data) => {
 };
 
 // 智能截断历史记录（UI 与 API 解耦）
-const prepareMessagesForAPI = (messages, maxMessages = 10) => {
+const prepareMessagesForAPI = (messages, maxMessages = 10, maxTotalChars = 4000) => {
   // 1. 过滤掉纯 UI 消息
   const apiMessages = messages.filter(msg =>
     msg.role === 'user' || msg.role === 'assistant'
@@ -130,7 +130,14 @@ const prepareMessagesForAPI = (messages, maxMessages = 10) => {
     trimmedMessages = apiMessages.slice(-maxMessages);
   }
 
-  // 3. 确保首条为 user（OpenAI API 要求）
+  // 3. 控制总文本长度，优先保留最近消息
+  let totalChars = trimmedMessages.reduce((sum, msg) => sum + (msg.content?.length || 0), 0);
+  while (trimmedMessages.length > 1 && totalChars > maxTotalChars) {
+    trimmedMessages = trimmedMessages.slice(1);
+    totalChars = trimmedMessages.reduce((sum, msg) => sum + (msg.content?.length || 0), 0);
+  }
+
+  // 4. 确保首条为 user（OpenAI API 要求）
   if (trimmedMessages.length > 0 && trimmedMessages[0].role !== 'user') {
     const firstUserIndex = trimmedMessages.findIndex(msg => msg.role === 'user');
     if (firstUserIndex > 0) {
@@ -140,7 +147,7 @@ const prepareMessagesForAPI = (messages, maxMessages = 10) => {
     }
   }
 
-  // 4. 转换为 API 格式
+  // 5. 转换为 API 格式
   return trimmedMessages.map(msg => ({
     role: msg.role,
     content: msg.content
@@ -390,10 +397,10 @@ export const useAppStore = create((set, get) => ({
   setGeneratedImage: (image) => set({ generatedImage: image }),
 
   chatHistory: [],
-  addChatMessage: (role, content, imageUrl = null) => {
+  addChatMessage: (role, content, imageUrl = null, imageDatas = null) => {
     const { chatHistory } = get();
     set({
-      chatHistory: [...chatHistory, { role, content, imageUrl, timestamp: Date.now() }]
+      chatHistory: [...chatHistory, { role, content, imageUrl, imageDatas, timestamp: Date.now() }]
     });
   },
   clearChatHistory: () => set({ chatHistory: [] }),
@@ -409,7 +416,7 @@ export const useAppStore = create((set, get) => ({
   agentMode: false,            // Agent 对话模式
   uploadedImages: [],          // 用户上传的参考底图
   resolution: '2K',            // 生图分辨率
-  aspectRatio: '1:1',          // 生图比例
+  aspectRatio: 'auto',         // 生图比例
   numImages: 1,                // 生图数量（默认 1 张）
   selectedModel: '',           // 生图模型（默认未选择）
   theme: initialTheme,
@@ -548,16 +555,18 @@ export const useAppStore = create((set, get) => ({
     }
     const normalizedImages = normalizeReferenceImages(imageDatas);
 
-    const userMsg = { role: 'user', content: message };
+    const userMsg = { role: 'user', content: message, imageDatas: [...normalizedImages] };
     const updated = [...workspaceChatMessages, userMsg];
     set({ workspaceChatMessages: updated, isWorkspaceChatLoading: true });
 
     try {
+      const apiMessages = prepareMessagesForAPI(updated, 10, 4000);
       const response = await fetch('/api/v1/direct-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message,
+          messages: apiMessages,
           image_data: normalizedImages[0] || null,
           image_datas: normalizedImages.length > 0 ? normalizedImages : null,
         }),
@@ -604,10 +613,10 @@ export const useAppStore = create((set, get) => ({
     const normalizedImages = normalizeReferenceImages(imageDatas);
 
     // 追加用户消息
-    const userMsg = { role: 'user', content: message };
+    const userMsg = { role: 'user', content: message, imageDatas: [...normalizedImages] };
     const updated = [...workspaceChatMessages, userMsg];
     set({ workspaceChatMessages: updated, isWorkspaceChatLoading: true });
-    addChatMessage('user', message);
+    addChatMessage('user', message, null, [...normalizedImages]);
 
     try {
       // 智能截断历史记录（UI 显示全部，API 只发送必要上下文）
@@ -849,19 +858,19 @@ export const useAppStore = create((set, get) => ({
     console.log('token:', token ? '存在' : '不存在');
 
     if (!imageUrl) {
-      console.log('❌ 缺少 imageUrl，提前返回');
+      console.log('缺少 imageUrl，提前返回');
       return;
     }
 
     if (!ensureAuthenticatedForModelAction('进行审图分析')) {
-      console.log('❌ 缺少 token 或 imageUrl，提前返回');
+      console.log('缺少 token 或 imageUrl，提前返回');
       return;
     }
 
     addChatMessage('assistant', '正在进行专业审图分析...');
 
     try {
-      console.log('📡 发送审图请求...');
+      console.log('发送审图请求...');
       const response = await fetch('/api/audit_diagram', {
         method: 'POST',
         headers: {
@@ -878,10 +887,10 @@ export const useAppStore = create((set, get) => ({
       console.log('审图返回数据:', data);
 
       if (response.ok) {
-        let message = '📊 审图报告\n\n';
+        let message = '审图报告\n\n';
 
         // 审核结果
-        message += `${data.is_pass ? '✅ 审核通过' : '⚠️ 需要改进'}\n\n`;
+        message += `${data.is_pass ? '审核通过' : '需要改进'}\n\n`;
 
         // 核心评价
         if (data.overview) {
@@ -890,7 +899,7 @@ export const useAppStore = create((set, get) => ({
 
         // 闪光点
         if (data.positive && data.positive.length > 0) {
-          message += `💡 闪光点：\n`;
+          message += `闪光点：\n`;
           data.positive.forEach((item) => {
             message += `• ${item}\n`;
           });
@@ -899,7 +908,7 @@ export const useAppStore = create((set, get) => ({
 
         // 需要改进
         if (data.negative && data.negative.length > 0) {
-          message += `⚠️ 需要改进：\n`;
+          message += `需要改进：\n`;
           data.negative.forEach((item) => {
             message += `• ${item}\n`;
           });
@@ -908,7 +917,7 @@ export const useAppStore = create((set, get) => ({
 
         // 改进建议
         if (data.suggestions && data.suggestions.length > 0) {
-          message += `💡 改进建议：\n`;
+          message += `改进建议：\n`;
           data.suggestions.forEach((item) => {
             message += `• ${item}\n`;
           });
@@ -1178,13 +1187,14 @@ export const useAppStore = create((set, get) => ({
         generatedImage: { url: results[0], timestamp: Date.now() },
         batchResults: results,
         isGenerating: false,
+        ...clearRequestState,
         chatInput: '',
         canvasDataUrl: null,
       });
     } catch (error) {
       console.error('Batch generation failed:', error);
       addChatMessage('assistant', '批量生成失败');
-      set({ isGenerating: false });
+      set({ isGenerating: false, ...clearRequestState });
     }
   },
 
@@ -1205,6 +1215,7 @@ export const useAppStore = create((set, get) => ({
       selectedModel,
       refreshBilling,
       ensureAuthenticatedForModelAction,
+      setShowAuthModal,
     } = get();
 
     const finalTemplateId = templateId || activeSkill;

@@ -71,6 +71,16 @@ def get_current_user(authorization: str = Header(None), db: Session = Depends(ge
 
     return user
 
+
+def get_optional_user(authorization: str = Header(None), db: Session = Depends(get_db)):
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+
+    try:
+        return get_current_user(authorization=authorization, db=db)
+    except HTTPException:
+        return None
+
 @router.post("/send-code")
 async def send_code(request: SendCodeRequest, http_request: Request, db: Session = Depends(get_db)):
     client_ip = extract_client_ip(http_request)
@@ -137,7 +147,8 @@ async def register(request: RegisterRequest, http_request: Request, db: Session 
         user = User(
             email=request.email,
             hashed_password=hash_password(request.password),
-            credits=0
+            credits=0,
+            created_at=datetime.utcnow(),
         )
         db.add(user)
         db.flush()
@@ -168,6 +179,11 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == request.email).first()
     if not user or not verify_password(request.password, user.hashed_password):
         raise HTTPException(status_code=400, detail="邮箱或密码错误")
+
+    user.last_login_at = datetime.utcnow()
+    db.add(user)
+    db.commit()
+    db.refresh(user)
 
     token = create_access_token({"sub": user.email, "user_id": user.id})
 

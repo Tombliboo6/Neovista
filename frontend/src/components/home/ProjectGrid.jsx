@@ -32,25 +32,28 @@ export default function ProjectGrid() {
   ];
 
   return (
-    <div className="w-full max-w-6xl mx-auto mt-16 px-6 pb-16">
-      <h2 className="text-xl font-semibold text-slate-800 mb-6">最近项目</h2>
+    <div className="mx-auto mt-16 w-full max-w-6xl px-6 pb-16">
+      <div className="mb-6">
+        <p className="mb-1 text-xs uppercase text-white/40">Studio Archive</p>
+        <h2 className="text-xl font-semibold text-white/90">最近项目</h2>
+      </div>
 
-      <div className="grid grid-cols-4 gap-6">
-        {/* 新建项目卡片 */}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
         <button
           onClick={() => navigate('/workspace')}
-          className="aspect-square border-2 border-dashed border-gray-200 bg-gray-50/50 rounded-xl flex flex-col items-center justify-center hover:bg-gray-50 hover:border-gray-300 transition-all duration-300 group"
+          className="group flex aspect-square flex-col items-center justify-center rounded-xl border border-dashed transition-all duration-300 active:scale-[0.98]"
+          style={{ borderColor: 'var(--border-strong)', background: 'rgba(255,255,255,0.025)' }}
         >
-          <Plus size={32} className="text-gray-400 group-hover:text-gray-600 transition-colors mb-2" />
-          <span className="text-sm text-gray-500 group-hover:text-gray-700 transition-colors">New Project</span>
+          <Plus size={30} className="mb-2 text-white/35 transition-colors group-hover:text-white/65" />
+          <span className="text-sm text-white/45 transition-colors group-hover:text-white/70">新建项目</span>
         </button>
 
-        {/* 项目卡片 */}
         {mockProjects.map((project) => (
           <div
             key={project.id}
             onClick={() => navigate('/workspace')}
-            className="aspect-square bg-white rounded-xl border border-gray-100 overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_12px_40px_rgb(0,0,0,0.08)]"
+            className="aspect-square cursor-pointer overflow-hidden rounded-xl border transition-all duration-300 hover:-translate-y-1"
+            style={{ background: 'var(--surface-1)', borderColor: 'var(--border-subtle)', boxShadow: 'var(--shadow-panel)' }}
           >
             <div className="h-3/4 overflow-hidden">
               <img
@@ -60,8 +63,8 @@ export default function ProjectGrid() {
               />
             </div>
             <div className="h-1/4 p-4 flex flex-col justify-center">
-              <h3 className="text-sm font-medium text-slate-800 truncate">{project.name}</h3>
-              <p className="text-xs text-gray-500 mt-1">{project.time}</p>
+              <h3 className="truncate text-sm font-medium text-white/80">{project.name}</h3>
+              <p className="mt-1 text-xs text-white/40">{project.time}</p>
             </div>
           </div>
         ))}

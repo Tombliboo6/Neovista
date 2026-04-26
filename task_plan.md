@@ -126,3 +126,58 @@ Phase 4
 - [x] 运行前端相关测试
 - [x] 更新设计与进度文档
 - **Status:** complete
+
+## Follow-up Task: 2026-04-18 至 2026-04-22 增量同步
+
+### Goal
+将 `progress.md` 中已经补记的近几轮核心改动同步到规划文档，保证 `task_plan.md` / `findings.md` / `progress.md` 三份文件口径一致。
+
+### Current Phase
+Phase 5
+
+### Phases
+
+#### Phase 1: 邮件验证码发送链路修复
+- [x] 定位验证码邮件失败与 sender 配置缺失的关系
+- [x] 改为读取 `RESEND_FROM_EMAIL`
+- [x] 为 sender 行为补充测试
+- **Status:** complete
+
+#### Phase 2: 对话链路增强
+- [x] 将用户消息扩展为图文同发并固化图片快照
+- [x] direct-chat 增加最近上下文透传
+- [x] 增加中文/英文回复策略与测试
+- **Status:** complete
+
+#### Phase 3: 生产日志监视脚本
+- [x] 新增过滤版和原始版日志观察脚本
+- [x] 新增 `.command` 启动器
+- [x] 为脚本契约补充测试
+- **Status:** complete
+
+#### Phase 4: GPT Image 2.0 与比例 auto
+- [x] 接入 `GPT Image 2.0` 选择项与 Nano 2 定价
+- [x] 扩展 GPT 图生图 `edits` 分支
+- [x] 新增图片比例“跟随模型(auto)”并完成前后端联动
+- [x] 补充后端与前端源码测试
+- **Status:** complete
+
+#### Phase 5: 文档对齐与验证
+- [x] 将新增改动回写 `progress.md`
+- [x] 同步更新 `task_plan.md`
+- [x] 同步更新 `findings.md`
+- [x] 运行与新增补记对应的测试命令
+- **Status:** complete
+
+## Additional Decisions Made
+| Decision | Rationale |
+|----------|-----------|
+| 将近几轮改动按“邮件 / 对话 / 日志脚本 / GPT Image / 比例 auto”五条主线回写 | 这些改动跨越前后端和部署，分组后更利于后续恢复上下文 |
+| 在文档中明确区分“已实现”和“仍未提交到版本库” | 避免把工作区改动误读为已经归档的提交里程碑 |
+| 比例“跟随模型”采用真实 `auto` 协议而不是伪装成 `1:1` | 保证 UI 文案与后端行为一致，后续扩展更稳定 |
+
+## Additional Verification
+- `backend/venv/bin/python -m unittest tests/test_chat_reply_policy.py tests/test_email_utils.py`
+- `python3 -m unittest tests/test_watch_prod_api_logs_scripts.py`
+- `backend/venv/bin/python -m unittest tests/test_generate_billing_flow.py tests/test_billing_pricing.py`
+- `node --test frontend/src/components/workspace/AgentChatInput.source.test.js frontend/src/store/useAppStore.source.test.js`

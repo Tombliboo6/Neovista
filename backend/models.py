@@ -11,6 +11,8 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     credits = Column(Integer, default=0)
     is_admin = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=True)
+    last_login_at = Column(DateTime, nullable=True)
 
 
 class CreditTransaction(Base):
@@ -95,3 +97,48 @@ class ChatSession(Base):
     collected_params = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class GenerationEvent(Base):
+    __tablename__ = "generation_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    request_id = Column(String(64), index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    entrypoint = Column(String(32), index=True, nullable=False)
+    template_id = Column(String(32), index=True, nullable=True)
+    selected_model = Column(String(64), index=True, nullable=True)
+    provider_name = Column(String(64), index=True, nullable=True)
+    resolution = Column(String(16), nullable=True)
+    aspect_ratio = Column(String(16), nullable=True)
+    num_images = Column(Integer, nullable=False, default=1)
+    status = Column(String(16), index=True, nullable=False)
+    error_code = Column(String(64), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class FrontendErrorEvent(Base):
+    __tablename__ = "frontend_error_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=True)
+    route = Column(String(255), index=True, nullable=False)
+    message = Column(Text, nullable=False)
+    stack = Column(Text, nullable=True)
+    user_agent = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AlertEvent(Base):
+    __tablename__ = "alert_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    type = Column(String(64), index=True, nullable=False)
+    status = Column(String(16), index=True, nullable=False)
+    message = Column(Text, nullable=False)
+    fingerprint = Column(String(128), index=True, nullable=False)
+    triggered_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    resolved_at = Column(DateTime, nullable=True)
+    last_evaluated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    meta_json = Column(Text, nullable=True)

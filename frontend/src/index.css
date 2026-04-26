@@ -4,29 +4,49 @@
 
 :root,
 :root[data-theme='dark'] {
-  --surface-0: #0f1117;
-  --surface-1: #1a1f2e;
-  --surface-2: #242938;
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --brand-blue: #2563eb;
-  --brand-gold: #f59e0b;
-  --text-primary: rgba(255, 255, 255, 0.92);
-  --text-secondary: rgba(255, 255, 255, 0.72);
-  --text-muted: rgba(255, 255, 255, 0.45);
-  --scrollbar-thumb: rgba(255, 255, 255, 0.15);
-  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
+  --surface-0: #11110f;
+  --surface-1: #191917;
+  --surface-2: #24231f;
+  --surface-3: #2f2d27;
+  --surface-paper: #f2eee4;
+  --border-subtle: rgba(242, 238, 228, 0.09);
+  --border-strong: rgba(242, 238, 228, 0.18);
+  --accent-primary: #5f837a;
+  --accent-primary-strong: #78a69a;
+  --accent-primary-soft: rgba(95, 131, 122, 0.16);
+  --accent-premium: #c89445;
+  --accent-premium-soft: rgba(200, 148, 69, 0.14);
+  --brand-blue: var(--accent-primary);
+  --brand-gold: var(--accent-premium);
+  --text-primary: rgba(248, 246, 240, 0.94);
+  --text-secondary: rgba(248, 246, 240, 0.70);
+  --text-muted: rgba(248, 246, 240, 0.46);
+  --shadow-soft: 0 20px 48px rgba(0, 0, 0, 0.22);
+  --shadow-panel: 0 14px 36px rgba(0, 0, 0, 0.18);
+  --scrollbar-thumb: rgba(248, 246, 240, 0.16);
+  --scrollbar-thumb-hover: rgba(248, 246, 240, 0.26);
 }
 
 :root[data-theme='light'] {
-  --surface-0: #f5f2eb;
-  --surface-1: #ffffff;
-  --surface-2: #ebe4d6;
-  --border-subtle: rgba(15, 23, 42, 0.08);
-  --brand-blue: #2563eb;
-  --brand-gold: #d97706;
-  --text-primary: rgba(15, 23, 42, 0.92);
-  --text-secondary: rgba(15, 23, 42, 0.72);
-  --text-muted: rgba(71, 85, 105, 0.78);
+  --surface-0: #f2eee4;
+  --surface-1: #fbfaf6;
+  --surface-2: #e8e1d3;
+  --surface-3: #d8cfbd;
+  --surface-paper: #fffdf8;
+  --border-subtle: rgba(37, 34, 28, 0.10);
+  --border-strong: rgba(37, 34, 28, 0.18);
+  --accent-primary: #496f68;
+  --accent-primary-strong: #31544f;
+  --accent-primary-soft: rgba(73, 111, 104, 0.13);
+  --accent-premium: #a9742d;
+  --accent-premium-soft: rgba(169, 116, 45, 0.14);
+  --brand-blue: var(--accent-primary);
+  --brand-gold: var(--accent-premium);
+  --text-primary: rgba(34, 31, 25, 0.93);
+  --text-secondary: rgba(34, 31, 25, 0.70);
+  --text-muted: rgba(70, 64, 52, 0.58);
+  --shadow-soft: 0 20px 45px rgba(55, 45, 28, 0.09);
+  --shadow-panel: 0 14px 34px rgba(55, 45, 28, 0.08);
   --scrollbar-thumb: rgba(100, 116, 139, 0.4);
   --scrollbar-thumb-hover: rgba(71, 85, 105, 0.58);
 }
@@ -34,25 +54,26 @@
 body {
   margin: 0;
   @apply antialiased;
-  font-family: 'DM Sans', system-ui, sans-serif;
+  font-family: 'Avenir Next', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
   background:
-    radial-gradient(circle at top, rgba(37, 99, 235, 0.14), transparent 34%),
+    linear-gradient(135deg, rgba(242, 238, 228, 0.035), transparent 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 14rem),
     var(--surface-0);
   color: var(--text-primary);
   transition: background-color 160ms ease, color 160ms ease;
 }
 
 #root {
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 :root[data-theme='light'] body {
   background:
-    radial-gradient(circle at top, rgba(37, 99, 235, 0.1), transparent 38%),
+    linear-gradient(135deg, rgba(73, 111, 104, 0.07), transparent 30%),
+    linear-gradient(180deg, rgba(255, 253, 248, 0.82), transparent 18rem),
     var(--surface-0);
 }
 
-/* 细滚动条 */
 ::-webkit-scrollbar {
   width: 4px;
   height: 4px;
@@ -69,7 +90,7 @@ body {
 }
 
 :root[data-theme='light'] .bg-surface-0\/80 {
-  background-color: rgba(255, 255, 255, 0.82) !important;
+  background-color: rgba(251, 250, 246, 0.84) !important;
 }
 
 :root[data-theme='light'] .border-white\/\[0\.06\] {
@@ -77,7 +98,7 @@ body {
 }
 
 :root[data-theme='light'] .bg-white\/90 {
-  background-color: rgba(255, 255, 255, 0.92) !important;
+  background-color: rgba(251, 250, 246, 0.92) !important;
 }
 
 :root[data-theme='light'] .bg-white\/50 {
@@ -134,4 +155,19 @@ body {
 
 :root[data-theme='light'] .placeholder-white\/25::placeholder {
   color: rgba(100, 116, 139, 0.62) !important;
+}
+
+.nv-panel {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-panel);
+}
+
+.nv-hairline {
+  border-color: var(--border-subtle);
+}
+
+.nv-focus-ring:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }

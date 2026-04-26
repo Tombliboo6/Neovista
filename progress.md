@@ -140,10 +140,101 @@
 - Files created/modified:
   - `progress.md` (updated)
 
+## Session: 2026-04-18 至 2026-04-22
+
+### Phase 5: 邮件验证码发送链路修复
+- **Status:** complete
+- **Started:** 2026-04-18
+- Actions taken:
+  - 核对邮箱验证码发送失败原因，确认问题不在 `RESEND_API_KEY`，而在发件人地址仍使用硬编码测试地址。
+  - 将邮件发送逻辑改为强制读取 `RESEND_FROM_EMAIL`，未配置时直接失败并输出明确日志，避免继续使用错误 sender 假装成功。
+  - 补充 `.env.example` 的邮件配置示例，要求使用已在 Resend 验证过的发件邮箱。
+  - 新增回归测试，覆盖“使用配置 sender 发送成功”与“缺少 sender 时拒绝发送”两种场景。
+- Files created/modified:
+  - `backend/email_utils.py` (updated)
+  - `backend/.env.example` (updated)
+  - `tests/test_email_utils.py` (created)
+  - `progress.md` (updated)
+
+### Phase 6: 对话链路增强补记
+- **Status:** complete
+- **Started:** 2026-04-20
+- Actions taken:
+  - 将工作区用户消息扩展为可携带 `imageDatas`，发送时把“本轮图片快照 + 文字”一起固化到聊天历史中，避免 UI 只显示文字。
+  - `ChatHistory` 增加同一条用户消息内的图片缩略图展示，图文保持同轮关联。
+  - `/api/v1/direct-chat` 增加最近上下文透传能力，前端发送最近 10 条消息并限制总文本长度，后端兼容读取 `messages` 参与 prompt 组装。
+  - `/api/v1/direct-chat` 与 `/api/v1/agent/workspace-chat` 的带图对话改为逐张原图走多模态链路，不再默认只依赖拼图后的单张 JPEG。
+  - 后端新增语言策略：中文请求强制中文回复；英文或其他非中文请求允许原语言回答，但必须附带 `中文翻译：...`。
+  - 为 direct-chat / workspace-chat 补充语言修正与控制字段保持测试，防止 JSON 控制字段在翻译修正时被破坏。
+- Files created/modified:
+  - `backend/main.py` (updated)
+  - `frontend/src/store/useAppStore.js` (updated)
+  - `frontend/src/components/workspace/ChatHistory.jsx` (updated)
+  - `frontend/src/components/workspace/ChatHistory.source.test.js` (created)
+  - `tests/test_chat_reply_policy.py` (created)
+  - `progress.md` (updated)
+
+### Phase 7: 生产日志本机观察脚本
+- **Status:** complete
+- **Started:** 2026-04-20
+- Actions taken:
+  - 新增本机脚本，通过现有 SSH key 持续观察云服务器 `neovista-api` 的 `journalctl -f` 输出，不需要每次手动登录服务器。
+  - 提供两种查看模式：
+    - 过滤版：聚焦 `POST /api/`、`GET /api/`、`Traceback`、`ERROR`、`Exception` 以及模型调用关键前缀。
+    - 原始版：输出完整 `neovista-api` journal 流。
+  - 增加 `.command` 启动器，方便在 macOS 上双击打开监视窗口。
+  - 为三份脚本补充源码级测试，锁定 SSH 参数、`--since` 支持、keepalive 和启动器约定。
+- Files created/modified:
+  - `scripts/watch-prod-api-logs.sh` (created)
+  - `scripts/watch-prod-api-logs-raw.sh` (created)
+  - `scripts/watch-prod-api-logs.command` (created)
+  - `tests/test_watch_prod_api_logs_scripts.py` (created)
+  - `progress.md` (updated)
+
+### Phase 8: GPT Image 2.0 渠道接入与图生图扩展
+- **Status:** complete
+- **Started:** 2026-04-22
+- Actions taken:
+  - 新增 `GPT Image 2.0` 作为网页生图模型选项，并将其定价对齐 `Nano 2`。
+  - 后端按模型分流生图请求：
+    - 纯文本生图走 `/v1/images/generations`
+    - 带参考图或 i2i 模板走 `/v1/images/edits`
+  - GPT 图生图分支改为使用 `multipart/form-data` 上传 `image[]`，兼容上游返回 `b64_json` 或 `url` 两种结果格式。
+  - 放宽 GPT edits 分支超时时间，减少参考图编辑场景下的超时误判。
+  - 补充后端计费与渠道流测试，覆盖 Nano 2 定价、文生图 generations 分支、带参考图 edits 分支、i2i 模板 edits 分支。
+- Files created/modified:
+  - `backend/main.py` (updated)
+  - `backend/pricing.py` (updated)
+  - `frontend/src/components/workspace/AgentChatInput.jsx` (updated)
+  - `frontend/src/components/workspace/GenerateParamsModal.jsx` (updated)
+  - `frontend/src/lib/generationPricing.js` (updated)
+  - `tests/test_billing_pricing.py` (updated)
+  - `tests/test_generate_billing_flow.py` (updated)
+  - `progress.md` (updated)
+
+### Phase 9: 生图比例“跟随模型”能力
+- **Status:** complete
+- **Started:** 2026-04-22
+- Actions taken:
+  - 将生图比例默认值从固定 `1:1` 调整为 `auto`，前端下拉框新增并置顶 `跟随模型` 选项。
+  - 保持比例值原样透传到后端，不再在 UI 层将“跟随模型”伪装成固定方图。
+  - 后端新增 `auto` 语义：
+    - GPT Image 2.0 映射为 `size=auto`
+    - Gemini 分支在 `auto` 时不再传固定 `imageConfig.aspectRatio`
+  - 为前后端补充源码与后端测试，确保 `auto` 不会被改写回 `1:1`。
+- Files created/modified:
+  - `backend/main.py` (updated)
+  - `frontend/src/components/workspace/AgentChatInput.jsx` (updated)
+  - `frontend/src/components/workspace/AgentChatInput.source.test.js` (updated)
+  - `frontend/src/store/useAppStore.js` (updated)
+  - `frontend/src/store/useAppStore.source.test.js` (updated)
+  - `tests/test_generate_billing_flow.py` (updated)
+  - `progress.md` (updated)
+
 ## 当前项目状态快照
 - **整体状态:** 核心产品骨架已成型，已覆盖首页、工作区、鉴权、计费/积分、模板生图、Agent 对话、审图与部署修复等主线能力。
 - **最近已提交里程碑:** 静态资源缓存修复、Nginx API 优先级修复、Gallery 性能优化、预览与部署同步修复。
-- **当前工作区新增但待提交进度:** 多参考图输入与后端合成链路、direct chat 提示词顾问模式、登录态启动恢复、生成后状态清理、审图 JSON 解析增强、对应测试补齐。
+- **当前工作区新增但待提交进度:** 多参考图输入与后端合成链路、direct chat 提示词顾问模式、对话图文同发与中文回复策略、验证码 sender 配置修复、生产日志观察脚本、GPT Image 2.0 接入与图生图扩展、比例“跟随模型(auto)”能力、对应测试补齐。
 - **需要继续关注:** 当前这些最新能力仍处于工作区未提交状态，最终归档前需要完成测试核验与提交存档。
 
 ## 历史进度回填
@@ -198,6 +289,11 @@
 | 登录门禁回归测试 | `node --test src/lib/referenceImages.test.js src/components/workspace/AgentChatInput.source.test.js src/store/useAppStore.source.test.js src/App.source.test.js` | 门禁改动不破坏已有前端源码行为 | 19 项通过，0 项失败 | ✓ |
 | 登录框上下文源码测试 | `node --test src/components/auth/AuthModal.source.test.js` | 登录框展示“当前操作需要登录”和继续提示 | 1 项通过，0 项失败 | ✓ |
 | 登录框上下文回归测试 | `node --test src/lib/referenceImages.test.js src/components/auth/AuthModal.source.test.js src/components/workspace/AgentChatInput.source.test.js src/store/useAppStore.source.test.js src/App.source.test.js` | 新上下文文案不破坏既有前端源码行为 | 21 项通过，0 项失败 | ✓ |
+| 邮件 sender 与对话策略测试 | `backend/venv/bin/python -m unittest tests/test_chat_reply_policy.py tests/test_email_utils.py` | direct-chat 上下文、图文多模态、中英回复策略与邮件 sender 规则通过 | 9 项通过，0 项失败 | ✓ |
+| 生产日志脚本测试 | `python3 -m unittest tests/test_watch_prod_api_logs_scripts.py` | 过滤版/原始版/.command 启动器满足约定 | 1 项通过，0 项失败 | ✓ |
+| GPT Image 与比例 auto 后端测试 | `backend/venv/bin/python -m unittest tests/test_generate_billing_flow.py tests/test_billing_pricing.py` | GPT Image 渠道、edits 分支与 auto 比例逻辑通过 | 15 项通过，0 项失败 | ✓ |
+| 比例 auto 前端源码测试 | `node --test frontend/src/components/workspace/AgentChatInput.source.test.js frontend/src/store/useAppStore.source.test.js` | “跟随模型”选项与默认 `auto` 状态通过 | 16 项通过，0 项失败 | ✓ |
+| 比例 auto 语法检查 | `backend/venv/bin/python -m py_compile backend/main.py && node --check frontend/src/store/useAppStore.js` | 后端与前端 store 语法正确 | 命令成功退出 | ✓ |
 
 ## Error Log
 | Timestamp | Error | Attempt | Resolution |

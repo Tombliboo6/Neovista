@@ -19,6 +19,11 @@ class BillingPricingTest(unittest.TestCase):
         self.assertEqual(calculate_generation_cost("2K", 1, "nano-banana-pro"), 80)
         self.assertEqual(calculate_generation_cost("4K", 1, "nano-banana-pro"), 120)
 
+    def test_gpt_image_2_uses_nano_banana_2_pricing(self):
+        self.assertEqual(calculate_generation_cost("1K", 1, "gpt-image-2"), 30)
+        self.assertEqual(calculate_generation_cost("2K", 1, "gpt-image-2"), 50)
+        self.assertEqual(calculate_generation_cost("4K", 1, "gpt-image-2"), 90)
+
     def test_num_images_multiplier(self):
         self.assertEqual(calculate_generation_cost("2K", 3, "nano-banana-2"), 150)
         self.assertEqual(calculate_generation_cost("2K", 3, "nano-banana-pro"), 240)

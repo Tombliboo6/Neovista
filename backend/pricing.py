@@ -12,6 +12,7 @@ BASE_RESOLUTION_PRICING: Final[Dict[str, int]] = {
 MODEL_SURCHARGE_PER_IMAGE: Final[Dict[str, int]] = {
     "nano-banana-2": 0,
     "nano-banana-pro": 30,
+    "gpt-image-2": 0,
 }
 
 
