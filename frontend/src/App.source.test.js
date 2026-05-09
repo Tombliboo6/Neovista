@@ -9,6 +9,7 @@ test('App lazy-loads non-home routes', () => {
   assert.match(appSource, /const AdminShell = lazy\(\(\) => import\('.\/components\/admin\/AdminShell'\)\);/);
   assert.match(appSource, /const AdminDashboardPage = lazy\(\(\) => import\('.\/components\/admin\/AdminDashboardPage'\)\);/);
   assert.match(appSource, /const AdminTemplatesPage = lazy\(\(\) => import\('.\/components\/admin\/AdminTemplatesPage'\)\);/);
+  assert.match(appSource, /const AdminRedemptionCodesPage = lazy\(\(\) => import\('.\/components\/admin\/AdminRedemptionCodesPage'\)\);/);
   assert.match(appSource, /<Suspense fallback=/);
   assert.doesNotMatch(appSource, /import Workspace from '\.\/components\/workspace\/Workspace';/);
   assert.doesNotMatch(appSource, /import AdminShell from '\.\/components\/admin\/AdminShell';/);
@@ -29,9 +30,10 @@ test('App starts a version watcher and prompts for refresh when a new bundle is 
   assert.match(appSource, /return stopWatchingVersion;/);
 });
 
-test('App exposes nested admin dashboard and templates routes', () => {
+test('App exposes nested admin dashboard, templates, and redemption-code routes', () => {
   assert.match(appSource, /<Route path="\/admin" element=\{<AdminShell \/>\}>/);
   assert.match(appSource, /<Route index element=\{<Navigate to="dashboard" replace \/>\} \/>/);
   assert.match(appSource, /<Route path="dashboard" element=\{<AdminDashboardPage \/>\} \/>/);
   assert.match(appSource, /<Route path="templates" element=\{<AdminTemplatesPage \/>\} \/>/);
+  assert.match(appSource, /<Route path="redemption-codes" element=\{<AdminRedemptionCodesPage \/>\} \/>/);
 });

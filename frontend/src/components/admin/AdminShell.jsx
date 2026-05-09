@@ -20,7 +20,17 @@ export default function AdminShell() {
     window.location.href = '/';
   }, [adminToken]);
 
-  const currentItem = location.pathname.startsWith('/admin/templates') ? 'Templates' : 'Dashboard';
+  const currentItem = location.pathname.startsWith('/admin/templates')
+    ? 'Templates'
+    : location.pathname.startsWith('/admin/redemption-codes')
+      ? '兑换码'
+      : 'Dashboard';
+
+  const navItems = [
+    { to: '/admin/dashboard', label: 'Dashboard' },
+    { to: '/admin/templates', label: 'Templates' },
+    { to: '/admin/redemption-codes', label: '兑换码' },
+  ];
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
@@ -33,26 +43,19 @@ export default function AdminShell() {
           </div>
 
           <nav className="space-y-2">
-            <NavLink
-              to="/admin/dashboard"
-              className={({ isActive }) =>
-                `block rounded-2xl px-4 py-3 text-sm font-medium transition ${
-                  isActive
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                }`
-              }
-            >Dashboard</NavLink>
-            <NavLink
-              to="/admin/templates"
-              className={({ isActive }) =>
-                `block rounded-2xl px-4 py-3 text-sm font-medium transition ${
-                  isActive
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                }`
-              }
-            >Templates</NavLink>
+            {navItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) =>
+                  `block rounded-2xl px-4 py-3 text-sm font-medium transition ${
+                    isActive
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  }`
+                }
+              >{item.label}</NavLink>
+            ))}
           </nav>
         </aside>
 

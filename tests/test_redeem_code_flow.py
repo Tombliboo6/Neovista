@@ -56,6 +56,14 @@ class RedeemCodeFlowTest(unittest.TestCase):
         self.app.dependency_overrides[billing_router_module.get_current_user] = lambda: self.user
         self.client = TestClient(self.app)
 
+    def override_admin_user(self):
+        admin_dependency = getattr(
+            billing_router_module,
+            "get_optional_user",
+            billing_router_module.get_current_user,
+        )
+        self.app.dependency_overrides[admin_dependency] = lambda: self.admin_user
+
     def tearDown(self):
         self.db.close()
         self.engine.dispose()
@@ -77,7 +85,7 @@ class RedeemCodeFlowTest(unittest.TestCase):
         self.assertEqual(second.status_code, 400)
 
     def test_admin_generate_redemption_codes_writes_audit_log(self):
-        self.app.dependency_overrides[billing_router_module.get_current_user] = lambda: self.admin_user
+        self.override_admin_user()
 
         response = self.client.post(
             "/api/v1/billing/admin/redemption-codes",
@@ -92,6 +100,22 @@ class RedeemCodeFlowTest(unittest.TestCase):
         audit_log = self.db.query(AdminAuditLog).filter(AdminAuditLog.action == "GENERATE_REDEMPTION_CODES").one()
         self.assertEqual(audit_log.actor_user_id, self.admin_user.id)
         self.assertIn("wechat-2026-04", audit_log.details)
+
+    def test_admin_token_can_generate_redemption_codes_for_console(self):
+        response = self.client.post(
+            "/api/v1/billing/admin/redemption-codes",
+            headers={"x-admin-token": "test-admin-secret"},
+            json={"credits": 1000, "count": 1, "batch": "wechat-2026-05-10yuan"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(len(data["codes"]), 1)
+
+        audit_log = self.db.query(AdminAuditLog).filter(AdminAuditLog.action == "GENERATE_REDEMPTION_CODES").one()
+        self.assertEqual(audit_log.actor_user_id, self.admin_user.id)
+        self.assertIn("wechat-2026-05-10yuan", audit_log.details)
 
     def test_admin_generate_redemption_codes_retries_hash_collision(self):
         existing_code = "NV-AAAA-BBBB-CCCC"
@@ -109,7 +133,7 @@ class RedeemCodeFlowTest(unittest.TestCase):
             "NV-DDDD-EEEE-FFFF",
         ])
 
-        self.app.dependency_overrides[billing_router_module.get_current_user] = lambda: self.admin_user
+        self.override_admin_user()
 
         with patch.object(
             billing_router_module,

@@ -5,11 +5,12 @@ import string
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from auth import get_current_user
+from admin_auth import verify_admin_token
+from auth import get_current_user, get_optional_user
 from billing_service import redeem_code
 from database import get_db
 from models import AdminAuditLog, CreditTransaction, RedemptionCode, User
@@ -39,10 +40,13 @@ def _generate_plain_code(prefix: str) -> str:
 def _write_admin_audit_log(
     db: Session,
     *,
-    actor_user_id: int,
+    actor_user_id: Optional[int],
     action: str,
     details: dict,
 ):
+    if actor_user_id is None:
+        return
+
     db.add(
         AdminAuditLog(
             actor_user_id=actor_user_id,
@@ -50,6 +54,22 @@ def _write_admin_audit_log(
             details=json.dumps(details, ensure_ascii=False),
         )
     )
+
+
+def _resolve_redemption_admin_actor(
+    db: Session,
+    *,
+    current_user: Optional[User],
+    x_admin_token: Optional[str],
+) -> Optional[User]:
+    if current_user and current_user.is_admin:
+        return current_user
+
+    if x_admin_token:
+        verify_admin_token(x_admin_token)
+        return db.query(User).filter(User.is_admin.is_(True)).order_by(User.id.asc()).first()
+
+    raise HTTPException(status_code=403, detail="需要管理员权限")
 
 
 @router.get("/me")
@@ -109,12 +129,16 @@ async def redeem_billing_code(
 @router.post("/admin/redemption-codes")
 async def create_redemption_codes(
     request: RedemptionCodeBatchRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_user),
     db: Session = Depends(get_db),
+    x_admin_token: Optional[str] = Header(None),
 ):
-    current_user = db.merge(current_user)
-    if not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="需要管理员权限")
+    current_user = db.merge(current_user) if current_user else None
+    admin_actor = _resolve_redemption_admin_actor(
+        db,
+        current_user=current_user,
+        x_admin_token=x_admin_token,
+    )
 
     expires_at = None
     if request.expires_days:
@@ -153,7 +177,7 @@ async def create_redemption_codes(
 
         _write_admin_audit_log(
             db,
-            actor_user_id=current_user.id,
+            actor_user_id=admin_actor.id if admin_actor else None,
             action="GENERATE_REDEMPTION_CODES",
             details={
                 "credits": request.credits,

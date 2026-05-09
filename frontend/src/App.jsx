@@ -9,6 +9,7 @@ const Workspace = lazy(() => import('./components/workspace/Workspace'));
 const AdminShell = lazy(() => import('./components/admin/AdminShell'));
 const AdminDashboardPage = lazy(() => import('./components/admin/AdminDashboardPage'));
 const AdminTemplatesPage = lazy(() => import('./components/admin/AdminTemplatesPage'));
+const AdminRedemptionCodesPage = lazy(() => import('./components/admin/AdminRedemptionCodesPage'));
 
 function App() {
   const bootstrapAuth = useAppStore((state) => state.bootstrapAuth);
@@ -60,6 +61,7 @@ function App() {
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<AdminDashboardPage />} />
             <Route path="templates" element={<AdminTemplatesPage />} />
+            <Route path="redemption-codes" element={<AdminRedemptionCodesPage />} />
           </Route>
         </Routes>
       </Suspense>
