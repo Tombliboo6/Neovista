@@ -54,6 +54,11 @@ test('useAppStore tracks plural uploaded images instead of a single uploaded ima
   assert.match(storeSource, /removeUploadedImageAt:\s*\(index\)\s*=>/);
 });
 
+test('useAppStore stores asset usage confirmation for upload controls', () => {
+  assert.match(storeSource, /assetUsageConfirmed:\s*false,/);
+  assert.match(storeSource, /setAssetUsageConfirmed:\s*\(confirmed\)\s*=>\s*set\(\{\s*assetUsageConfirmed:\s*confirmed\s*\}\)/);
+});
+
 test('useAppStore centralizes auth gating for model actions', () => {
   assert.match(storeSource, /ensureAuthenticatedForModelAction:\s*\(actionLabel\s*=\s*'当前操作'\)\s*=>\s*\{/);
   assert.match(storeSource, /if\s*\(!token\)\s*\{[\s\S]*setShowAuthModal\(true\);[\s\S]*return false;\s*\}/);

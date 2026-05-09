@@ -415,6 +415,7 @@ export const useAppStore = create((set, get) => ({
   isWorkspaceChatLoading: false,
   agentMode: false,            // Agent 对话模式
   uploadedImages: [],          // 用户上传的参考底图
+  assetUsageConfirmed: false,  // 素材使用权确认
   resolution: '2K',            // 生图分辨率
   aspectRatio: 'auto',         // 生图比例
   numImages: 1,                // 生图数量（默认 1 张）
@@ -422,6 +423,7 @@ export const useAppStore = create((set, get) => ({
   theme: initialTheme,
   setAgentMode: (mode) => set({ agentMode: mode }),
   setUploadedImages: (images) => set({ uploadedImages: images }),
+  setAssetUsageConfirmed: (confirmed) => set({ assetUsageConfirmed: confirmed }),
   removeUploadedImageAt: (index) => set((state) => ({
     uploadedImages: state.uploadedImages.filter((_, currentIndex) => currentIndex !== index),
   })),
