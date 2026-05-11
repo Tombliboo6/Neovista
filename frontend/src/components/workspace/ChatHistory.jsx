@@ -272,6 +272,17 @@ export default function ChatHistory() {
                     </div>
                   </div>
                 )}
+                {msg.videoUrl && (
+                  <div className="space-y-1.5">
+                    <video
+                      controls
+                      src={msg.videoUrl}
+                      className="w-full rounded-xl"
+                      style={{ maxHeight: '260px', background: 'black' }}
+                    />
+                    <p className="text-xs text-white/25 px-1">Seedance 2.0 视频</p>
+                  </div>
+                )}
               </div>
             )}
           </div>

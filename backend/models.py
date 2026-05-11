@@ -118,6 +118,28 @@ class GenerationEvent(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class VideoGenerationTask(Base):
+    __tablename__ = "video_generation_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(String(96), unique=True, index=True, nullable=False)
+    request_id = Column(String(64), unique=True, index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    hold_transaction_id = Column(Integer, ForeignKey("credit_transactions.id"), index=True, nullable=False)
+    selected_model = Column(String(64), index=True, nullable=False)
+    provider_model = Column(String(96), nullable=False)
+    api_format = Column(String(16), nullable=False, default="v3")
+    prompt = Column(Text, nullable=False)
+    aspect_ratio = Column(String(16), nullable=False)
+    resolution = Column(String(16), nullable=False, default="720p")
+    duration_seconds = Column(Integer, nullable=False)
+    status = Column(String(24), index=True, nullable=False)
+    video_url = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 class FrontendErrorEvent(Base):
     __tablename__ = "frontend_error_events"
 

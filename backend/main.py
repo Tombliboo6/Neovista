@@ -16,6 +16,7 @@ import traceback
 import uuid
 import base64
 import io
+import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
 from PIL import Image, ImageOps
@@ -25,6 +26,7 @@ load_dotenv()
 from billing_service import (
     capture_generation_hold,
     create_generation_hold,
+    create_video_generation_hold,
     refund_generation_hold,
 )
 from billing_router import router as billing_router
@@ -32,7 +34,7 @@ from dashboard_router import router as dashboard_router
 from database import engine, Base, get_db
 from auth import router as auth_router, get_current_user, get_optional_user
 from monitoring_service import record_frontend_error_event, safe_record_generation_event
-from models import User, ChatSession
+from models import CreditTransaction, User, ChatSession, VideoGenerationTask
 from llm_service import (
     init_chat_channels,
     chat_flash,
@@ -44,6 +46,7 @@ from llm_service import (
 )
 from rate_limit_service import check_and_increment_ip_limit, extract_client_ip
 from template_api_utils import serialize_template_summary
+from pricing import normalize_video_resolution
 
 class APIChannel(BaseModel):
     name: str
@@ -198,6 +201,26 @@ class GenerateDiagramResponse(BaseModel):
     charged_credits: int
     remaining_credits: int
     request_id: str
+
+class VideoGenerateRequest(BaseModel):
+    prompt: str
+    image_data: Optional[str] = None
+    image_datas: Optional[List[str]] = None
+    request_id: Optional[str] = None
+    aspect_ratio: Optional[str] = "16:9"
+    resolution: Optional[str] = "720p"
+    duration_seconds: Optional[int] = 5
+    video_mode: Optional[str] = "auto"
+    selected_model: Optional[str] = "seedance-2.0"
+
+class VideoTaskResponse(BaseModel):
+    task_id: str
+    request_id: str
+    status: str
+    video_url: Optional[str] = None
+    charged_credits: int
+    remaining_credits: int
+    timestamp: int
 
 class FrontendErrorPayload(BaseModel):
     route: str
@@ -735,6 +758,319 @@ def _build_openai_image_edit_files(reference_images: Optional[List[str]] = None)
         filename, raw_bytes, mime_type = _decode_reference_image_upload(image_data, index=index)
         files.append(("image[]", (filename, raw_bytes, mime_type)))
     return files
+
+
+def _get_seedance_base_url() -> str:
+    return os.getenv("SEEDANCE_BASE_URL", "https://ai.comfly.chat").rstrip("/")
+
+
+def _get_seedance_model() -> str:
+    return os.getenv("SEEDANCE_MODEL", "doubao-seedance-2-0-260128").strip()
+
+
+def _get_seedance_api_key() -> str:
+    api_key = os.getenv("SEEDANCE_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Seedance API 未配置：缺少 SEEDANCE_API_KEY")
+    return api_key
+
+
+def _normalize_seedance_aspect_ratio(aspect_ratio: Optional[str]) -> str:
+    normalized = (aspect_ratio or "16:9").strip()
+    if normalized == "auto":
+        return "16:9"
+    return normalized
+
+
+def _normalize_seedance_video_mode(video_mode: Optional[str], *, image_count: int) -> str:
+    normalized = (video_mode or "auto").strip().lower().replace("-", "_")
+    if normalized not in {"auto", "standard", "first_frame", "reference_image", "first_last_frame"}:
+        raise HTTPException(status_code=400, detail="不支持的视频生成模式")
+    if normalized == "auto":
+        if image_count == 0:
+            return "standard"
+        if image_count == 1:
+            return "first_frame"
+        if image_count == 2:
+            return "first_last_frame"
+        return "reference_image"
+    if normalized == "standard":
+        if image_count == 1:
+            return "first_frame"
+        if image_count >= 2:
+            return "reference_image"
+    return normalized
+
+
+def _validate_seedance_image_mode(video_mode: str, image_count: int):
+    if video_mode == "first_frame" and image_count != 1:
+        raise HTTPException(status_code=400, detail="首帧图生视频需要上传 1 张图片")
+    if video_mode == "first_last_frame" and image_count != 2:
+        raise HTTPException(status_code=400, detail="首尾帧视频需要上传首帧和尾帧两张图")
+    if video_mode == "reference_image" and not 1 <= image_count <= 9:
+        raise HTTPException(status_code=400, detail="参考图视频需要上传 1-9 张图片")
+
+
+def _get_seedance_image_role(video_mode: str, image_index: int) -> Optional[str]:
+    if video_mode == "first_frame":
+        return "first_frame"
+    if video_mode == "first_last_frame":
+        return "first_frame" if image_index == 0 else "last_frame"
+    if video_mode == "reference_image":
+        return "reference_image"
+    return None
+
+
+def _build_seedance_prompt(prompt: str, *, aspect_ratio: str, duration_seconds: int) -> str:
+    cleaned = (prompt or "").strip()
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="视频生成需要提供 prompt")
+    return cleaned
+
+
+def _build_public_base_url(request: Request) -> str:
+    configured_base_url = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+    if configured_base_url:
+        return configured_base_url
+
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    forwarded_host = request.headers.get("x-forwarded-host")
+    host = forwarded_host or request.headers.get("host")
+    if host:
+        return f"{forwarded_proto or 'https'}://{host}".rstrip("/")
+
+    return str(request.base_url).rstrip("/")
+
+
+def _save_seedance_reference_image(image_data: str, *, index: int, public_base_url: str) -> str:
+    if image_data.startswith(("http://", "https://")):
+        return image_data
+
+    filename, raw_bytes, mime_type = _decode_reference_image_upload(image_data, index=index)
+    if not mime_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Seedance 参考图必须是图片格式")
+
+    max_bytes = int(os.getenv("SEEDANCE_REFERENCE_MAX_BYTES", str(8 * 1024 * 1024)))
+    if len(raw_bytes) > max_bytes:
+        raise HTTPException(status_code=413, detail="Seedance 参考图过大，请压缩后重试")
+
+    _, extension = os.path.splitext(filename)
+    safe_filename = f"{uuid.uuid4().hex}{extension or '.png'}"
+    relative_dir = os.path.join("seedance_references")
+    target_dir = os.path.join("static", relative_dir)
+    os.makedirs(target_dir, exist_ok=True)
+    os.chmod(target_dir, 0o755)
+    target_path = os.path.join(target_dir, safe_filename)
+    with open(target_path, "wb") as f:
+        f.write(raw_bytes)
+    os.chmod(target_path, 0o644)
+
+    return f"{public_base_url}/static/{relative_dir}/{safe_filename}"
+
+
+def _build_seedance_content(
+    *,
+    prompt: str,
+    image_urls: Optional[List[str]],
+    aspect_ratio: str,
+    duration_seconds: int,
+    video_mode: str,
+) -> List[dict]:
+    content = [{
+        "type": "text",
+        "text": _build_seedance_prompt(
+            prompt,
+            aspect_ratio=aspect_ratio,
+            duration_seconds=duration_seconds,
+        ),
+    }]
+    for image_index, image_url in enumerate(image_urls or []):
+        image_item = {
+            "type": "image_url",
+            "image_url": {"url": image_url},
+        }
+        role = _get_seedance_image_role(video_mode, image_index)
+        if role:
+            image_item["role"] = role
+        content.append(image_item)
+    return content
+
+
+async def _create_seedance_task(
+    *,
+    prompt: str,
+    image_urls: Optional[List[str]],
+    aspect_ratio: str,
+    resolution: str,
+    duration_seconds: int,
+    video_mode: str,
+) -> Tuple[str, str]:
+    api_key = _get_seedance_api_key()
+    provider_model = _get_seedance_model()
+    payload = {
+        "model": provider_model,
+        "content": _build_seedance_content(
+            prompt=prompt,
+            image_urls=image_urls,
+            aspect_ratio=aspect_ratio,
+            duration_seconds=duration_seconds,
+            video_mode=video_mode,
+        ),
+        "ratio": aspect_ratio,
+        "resolution": resolution,
+        "duration": duration_seconds,
+        "watermark": False,
+        "camera_fixed": False,
+        "generate_audio": False,
+    }
+    url = f"{_get_seedance_base_url()}/seedance/v3/contents/generations/tasks"
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        response = await client.post(
+            url,
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+
+    task_id = str(data.get("id") or "").strip()
+    if not task_id:
+        raise HTTPException(status_code=502, detail="Seedance 创建任务成功但未返回 id")
+    return task_id, provider_model
+
+
+async def _query_seedance_task(task_id: str) -> dict:
+    api_key = _get_seedance_api_key()
+    url = f"{_get_seedance_base_url()}/seedance/v3/contents/generations/tasks/{task_id}"
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        response = await client.get(
+            url,
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        response.raise_for_status()
+        return response.json()
+
+
+async def _query_seedance_v2_video_task(task_id: str) -> dict:
+    api_key = _get_seedance_api_key()
+    url = f"{_get_seedance_base_url()}/v2/videos/generations/{task_id}"
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        response = await client.get(
+            url,
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        response.raise_for_status()
+        return response.json()
+
+
+def _extract_seedance_video_url(data: dict) -> Optional[str]:
+    if not isinstance(data, dict):
+        return None
+    for key in ("video_url", "url"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    for key in ("content", "data", "output", "result"):
+        nested = data.get(key)
+        if isinstance(nested, dict):
+            nested_url = _extract_seedance_video_url(nested)
+            if nested_url:
+                return nested_url
+    return None
+
+
+def _format_seedance_error_message(error_value) -> str:
+    if isinstance(error_value, str) and error_value.strip():
+        return error_value.strip()
+    if isinstance(error_value, dict):
+        code = error_value.get("code")
+        message = error_value.get("message")
+        if message:
+            return f"{code}: {message}" if code else str(message)
+        return json.dumps(error_value, ensure_ascii=False)
+    if error_value:
+        return str(error_value)
+    return "Seedance 视频生成失败"
+
+
+def _find_video_task_by_request_id(db: Session, *, user_id: int, request_id: str) -> Optional[VideoGenerationTask]:
+    return db.query(VideoGenerationTask).filter(
+        VideoGenerationTask.request_id == request_id,
+        VideoGenerationTask.user_id == user_id,
+    ).first()
+
+
+def _build_video_task_response_from_record(
+    db: Session,
+    task: VideoGenerationTask,
+    current_user: User,
+) -> VideoTaskResponse:
+    hold_txn = db.query(CreditTransaction).filter(CreditTransaction.id == task.hold_transaction_id).first()
+    db.refresh(current_user)
+    return VideoTaskResponse(
+        task_id=task.task_id,
+        request_id=task.request_id,
+        status=task.status,
+        video_url=task.video_url,
+        charged_credits=abs(hold_txn.amount) if hold_txn else 0,
+        remaining_credits=current_user.credits,
+        timestamp=int(datetime.utcnow().timestamp() * 1000),
+    )
+
+
+async def _wait_for_video_task_by_request_id(
+    db: Session,
+    *,
+    user_id: int,
+    request_id: str,
+    timeout_seconds: float = 12.0,
+) -> Optional[VideoGenerationTask]:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_seconds
+    while loop.time() < deadline:
+        db.expire_all()
+        task = _find_video_task_by_request_id(db, user_id=user_id, request_id=request_id)
+        if task:
+            return task
+        await asyncio.sleep(0.25)
+    return None
+
+
+def _create_video_generation_hold_or_raise(
+    db: Session,
+    current_user: User,
+    *,
+    duration_seconds: int,
+    resolution: str,
+    request_id: str,
+    idempotency_key: str,
+    selected_model: Optional[str] = None,
+):
+    try:
+        hold_txn = create_video_generation_hold(
+            db,
+            current_user,
+            duration_seconds=duration_seconds,
+            resolution=resolution,
+            request_id=request_id,
+            idempotency_key=idempotency_key,
+            selected_model=selected_model,
+        )
+        db.commit()
+        db.refresh(current_user)
+        return hold_txn
+    except ValueError as e:
+        db.rollback()
+        if str(e) != "积分不足":
+            raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=402, detail="积分不足，请充值")
+    except Exception as e:
+        db.rollback()
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"创建视频扣费预占失败: {str(e)}")
 
 
 def _create_generation_hold_or_raise(
@@ -1389,6 +1725,198 @@ async def workspace_chat(request: WorkspaceChatRequest, http_request: Request, d
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/video/generate")
+async def create_video_generation_task(
+    request: VideoGenerateRequest,
+    http_request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    request_id = request.request_id or str(uuid.uuid4())
+    duration_seconds = request.duration_seconds or 5
+    aspect_ratio = _normalize_seedance_aspect_ratio(request.aspect_ratio)
+    raw_reference_images = _normalize_reference_images(
+        image_data=request.image_data,
+        image_datas=request.image_datas,
+    )
+    video_mode = _normalize_seedance_video_mode(request.video_mode, image_count=len(raw_reference_images))
+    _validate_seedance_image_mode(video_mode, len(raw_reference_images))
+    try:
+        resolution = normalize_video_resolution(request.resolution)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    selected_model = request.selected_model or "seedance-2.0"
+    idempotency_key = f"video-generate:{current_user.id}:{request_id}"
+
+    existing_task = _find_video_task_by_request_id(db, user_id=current_user.id, request_id=request_id)
+    if existing_task:
+        return _build_video_task_response_from_record(db, existing_task, current_user)
+
+    existing_hold = db.query(CreditTransaction).filter(
+        CreditTransaction.idempotency_key == idempotency_key,
+        CreditTransaction.type == "GENERATE_HOLD",
+        CreditTransaction.status != "REFUNDED",
+    ).first()
+    if existing_hold:
+        existing_task = await _wait_for_video_task_by_request_id(
+            db,
+            user_id=current_user.id,
+            request_id=request_id,
+        )
+        if existing_task:
+            return _build_video_task_response_from_record(db, existing_task, current_user)
+        raise HTTPException(status_code=409, detail="视频任务正在提交，请稍后重试")
+
+    hold_txn = _create_video_generation_hold_or_raise(
+        db,
+        current_user,
+        duration_seconds=duration_seconds,
+        resolution=resolution,
+        request_id=request_id,
+        idempotency_key=idempotency_key,
+        selected_model=selected_model,
+    )
+
+    try:
+        public_base_url = _build_public_base_url(http_request)
+        reference_images = [
+            _save_seedance_reference_image(image_data, index=index, public_base_url=public_base_url)
+            for index, image_data in enumerate(raw_reference_images, start=1)
+        ]
+        task_id, provider_model = await _create_seedance_task(
+            prompt=request.prompt,
+            image_urls=reference_images,
+            aspect_ratio=aspect_ratio,
+            resolution=resolution,
+            duration_seconds=duration_seconds,
+            video_mode=video_mode,
+        )
+        api_format = "v3"
+        task = VideoGenerationTask(
+            task_id=task_id,
+            request_id=request_id,
+            user_id=current_user.id,
+            hold_transaction_id=hold_txn.id,
+            selected_model=selected_model,
+            provider_model=provider_model,
+            api_format=api_format,
+            prompt=request.prompt.strip(),
+            aspect_ratio=aspect_ratio,
+            resolution=resolution,
+            duration_seconds=duration_seconds,
+            status="submitted",
+        )
+        db.add(task)
+        safe_record_generation_event(
+            db,
+            request_id=request_id,
+            user_id=current_user.id,
+            entrypoint="video_generate",
+            template_id=None,
+            selected_model=selected_model,
+            provider_name="Seedance",
+            resolution=resolution,
+            aspect_ratio=aspect_ratio,
+            num_images=1,
+            status="PENDING",
+        )
+        db.commit()
+        db.refresh(current_user)
+        return VideoTaskResponse(
+            task_id=task_id,
+            request_id=request_id,
+            status="submitted",
+            charged_credits=abs(hold_txn.amount),
+            remaining_credits=current_user.credits,
+            timestamp=int(datetime.utcnow().timestamp() * 1000),
+        )
+    except HTTPException:
+        _refund_generation_hold_safely(
+            db,
+            hold_txn,
+            error_code="SEEDANCE_CREATE_FAILED",
+            error_message="Seedance 视频任务创建失败",
+        )
+        raise
+    except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
+        _refund_generation_hold_safely(
+            db,
+            hold_txn,
+            error_code="SEEDANCE_UPSTREAM_FAILED",
+            error_message=str(e),
+        )
+        raise HTTPException(status_code=503, detail="Seedance 视频服务暂时不可用，积分已退回")
+    except Exception as e:
+        _refund_generation_hold_safely(
+            db,
+            hold_txn,
+            error_code="SEEDANCE_INTERNAL_EXCEPTION",
+            error_message=str(e),
+        )
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Seedance 视频任务创建失败，积分已退回: {str(e)}")
+
+
+@app.get("/api/v1/video/tasks/{task_id}")
+async def get_video_generation_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    task = db.query(VideoGenerationTask).filter(
+        VideoGenerationTask.task_id == task_id,
+        VideoGenerationTask.user_id == current_user.id,
+    ).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="视频任务不存在")
+
+    try:
+        if task.api_format == "v2":
+            data = await _query_seedance_v2_video_task(task_id)
+        else:
+            data = await _query_seedance_task(task_id)
+    except httpx.HTTPStatusError as e:
+        status_code = e.response.status_code if e.response is not None else None
+        if status_code is not None and 500 <= status_code < 600:
+            print(f"Seedance upstream query transient {status_code} for task {task_id}: {e}")
+            return _build_video_task_response_from_record(db, task, current_user)
+        raise HTTPException(status_code=502, detail=f"Seedance 视频任务查询失败: {status_code or 'unknown'}")
+    except (httpx.TimeoutException, httpx.RequestError) as e:
+        print(f"Seedance upstream query transient network error for task {task_id}: {e}")
+        return _build_video_task_response_from_record(db, task, current_user)
+
+    status = str(data.get("status") or task.status or "running").strip().lower()
+    video_url = _extract_seedance_video_url(data)
+    task.status = status
+    if video_url:
+        task.video_url = video_url
+
+    hold_txn = db.query(CreditTransaction).filter(CreditTransaction.id == task.hold_transaction_id).first()
+    if status == "succeeded" and video_url and hold_txn and hold_txn.status == "PENDING":
+        capture_generation_hold(db, hold_txn, provider_meta={"channel": "Seedance"})
+    elif status in {"failed", "error", "cancelled", "canceled"} and hold_txn and hold_txn.status == "PENDING":
+        task.error_message = _format_seedance_error_message(data.get("error") or data.get("message"))
+        refund_generation_hold(
+            db,
+            hold_txn,
+            error_code="SEEDANCE_TASK_FAILED",
+            error_message=task.error_message,
+        )
+
+    db.add(task)
+    db.commit()
+    db.refresh(current_user)
+    return VideoTaskResponse(
+        task_id=task.task_id,
+        request_id=task.request_id,
+        status=task.status,
+        video_url=task.video_url,
+        charged_credits=abs(hold_txn.amount) if hold_txn else 0,
+        remaining_credits=current_user.credits,
+        timestamp=int(datetime.utcnow().timestamp() * 1000),
+    )
+
 
 @app.post("/api/v1/generate")
 async def generate_image(

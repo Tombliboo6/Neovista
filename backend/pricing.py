@@ -9,6 +9,14 @@ BASE_RESOLUTION_PRICING: Final[Dict[str, int]] = {
     "2K": 50,
     "4K": 90,
 }
+SEEDANCE_CREDITS_PER_SECOND: Final[int] = int(os.getenv("SEEDANCE_CREDITS_PER_SECOND", "120"))
+DEFAULT_SEEDANCE_RESOLUTION: Final[str] = "720p"
+SEEDANCE_RESOLUTION_CREDITS_PER_SECOND: Final[Dict[str, int]] = {
+    "480p": 200,
+    "720p": 250,
+    "1080p": 300,
+}
+MAX_VIDEO_DURATION_SECONDS: Final[int] = int(os.getenv("MAX_VIDEO_DURATION_SECONDS", "15"))
 MODEL_SURCHARGE_PER_IMAGE: Final[Dict[str, int]] = {
     "nano-banana-2": 0,
     "nano-banana-pro": 30,
@@ -45,3 +53,23 @@ def calculate_generation_cost(
     if num_images <= 0:
         raise ValueError("生成数量必须大于 0")
     return resolution_pricing[resolution] * num_images
+
+
+def calculate_video_generation_cost(
+    duration_seconds: int,
+    selected_model: Optional[str] = None,
+    resolution: Optional[str] = None,
+) -> int:
+    if duration_seconds < 5:
+        raise ValueError("视频时长不能少于 5 秒")
+    if duration_seconds > MAX_VIDEO_DURATION_SECONDS:
+        raise ValueError(f"视频时长不能超过 {MAX_VIDEO_DURATION_SECONDS} 秒")
+    normalized_resolution = normalize_video_resolution(resolution)
+    return SEEDANCE_RESOLUTION_CREDITS_PER_SECOND[normalized_resolution] * duration_seconds
+
+
+def normalize_video_resolution(resolution: Optional[str] = None) -> str:
+    normalized = (resolution or DEFAULT_SEEDANCE_RESOLUTION).strip().lower()
+    if normalized not in SEEDANCE_RESOLUTION_CREDITS_PER_SECOND:
+        raise ValueError(f"不支持的视频清晰度: {resolution}")
+    return normalized

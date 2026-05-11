@@ -10,6 +10,12 @@ import {
   resolveReferenceImages,
 } from '../../lib/referenceImages.js';
 import { safeCanvasToDataUrl } from '../../lib/canvasExport.js';
+import {
+  getSeedanceCreditsPerSecond,
+  isSeedanceModel,
+  SEEDANCE_RESOLUTION_OPTIONS,
+  SEEDANCE_VIDEO_MODE_OPTIONS,
+} from '../../lib/videoGeneration.js';
 
 const TARGET_MAX_BYTES = 2 * 1024 * 1024;
 const MAX_DIMENSION = 1536;
@@ -78,6 +84,7 @@ export default function AgentChatInput() {
   const workspaceChat = useAppStore((s) => s.workspaceChat);
   const directChat = useAppStore((s) => s.directChat);
   const generateImage = useAppStore((s) => s.generateImage);
+  const generateVideo = useAppStore((s) => s.generateVideo);
   const cancelActiveGeneration = useAppStore((s) => s.cancelActiveGeneration);
   const fabricInstance = useAppStore((s) => s.fabricInstance);
   const activeSkill = useAppStore((s) => s.activeSkill);
@@ -85,6 +92,12 @@ export default function AgentChatInput() {
   const setSelectedModel = useAppStore((s) => s.setSelectedModel);
   const aspectRatio = useAppStore((s) => s.aspectRatio);
   const setAspectRatio = useAppStore((s) => s.setAspectRatio);
+  const videoDurationSeconds = useAppStore((s) => s.videoDurationSeconds);
+  const setVideoDurationSeconds = useAppStore((s) => s.setVideoDurationSeconds);
+  const videoResolution = useAppStore((s) => s.videoResolution);
+  const setVideoResolution = useAppStore((s) => s.setVideoResolution);
+  const videoFrameMode = useAppStore((s) => s.videoFrameMode);
+  const setVideoFrameMode = useAppStore((s) => s.setVideoFrameMode);
   const agentMode = useAppStore((s) => s.agentMode);
   const setAgentMode = useAppStore((s) => s.setAgentMode);
   const uploadedImages = useAppStore((s) => s.uploadedImages);
@@ -173,6 +186,12 @@ export default function AgentChatInput() {
 
     if (agentMode) {
       workspaceChat(userInput, resolveImageDataList());
+      setChatInput('');
+      return;
+    }
+
+    if (isSeedanceModel(selectedModel)) {
+      generateVideo(userInput, referenceImages);
       setChatInput('');
       return;
     }
@@ -267,6 +286,7 @@ export default function AgentChatInput() {
           <option value="nano-banana-2">Nano 2</option>
           <option value="nano-banana-pro">Nano Pro</option>
           <option value="gpt-image-2">GPT Image 2.0</option>
+          <option value="seedance-2.0">Seedance 2.0 视频</option>
         </select>
 
         <select
@@ -277,6 +297,58 @@ export default function AgentChatInput() {
         >
           {ratios.map((ratio) => <option key={ratio.value} value={ratio.value}>{ratio.label}</option>)}
         </select>
+
+        {isSeedanceModel(selectedModel) && (
+          <>
+            <label className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-white/60" style={{ background: 'var(--surface-2)', border: '1px solid var(--border-subtle)' }}>
+              <span>时长</span>
+              <input
+                type="number"
+                min={5}
+                max={15}
+                step={1}
+                value={videoDurationSeconds}
+                onChange={(e) => setVideoDurationSeconds(e.target.value)}
+                className="w-10 bg-transparent text-right text-white/70 focus:outline-none"
+                aria-label="视频时长"
+              />
+              <span>秒</span>
+            </label>
+
+            <label className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-white/60" style={{ background: 'var(--surface-2)', border: '1px solid var(--border-subtle)' }}>
+              <span>清晰度</span>
+              <select
+                value={videoResolution}
+                onChange={(e) => setVideoResolution(e.target.value)}
+                className="bg-transparent text-white/70 focus:outline-none"
+                aria-label="视频清晰度"
+              >
+                {SEEDANCE_RESOLUTION_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <span className="text-[11px] text-white/35">{getSeedanceCreditsPerSecond(videoResolution)}点/秒</span>
+            </label>
+
+            <label className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-white/60" style={{ background: 'var(--surface-2)', border: '1px solid var(--border-subtle)' }}>
+              <span>模式</span>
+              <select
+                value={videoFrameMode}
+                onChange={(e) => setVideoFrameMode(e.target.value)}
+                className="bg-transparent text-white/70 focus:outline-none"
+                aria-label="视频输入模式"
+              >
+                {SEEDANCE_VIDEO_MODE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
       </div>
 
       {uploadedImages.length > 0 && (

@@ -21,6 +21,14 @@ import {
   createCanvasSafeFabricImage,
   safeCanvasToDataUrl,
 } from '../lib/canvasExport.js';
+import {
+  buildVideoTaskPollingState,
+  getVideoUrlOrThrow,
+  normalizeSeedanceResolution,
+  normalizeSeedanceVideoMode,
+  normalizeVideoDurationSeconds,
+  resolveSeedanceVideoMode,
+} from '../lib/videoGeneration.js';
 
 const initialTheme = getStoredThemePreference();
 applyThemePreference(initialTheme);
@@ -166,6 +174,22 @@ const createClientRequestId = () => {
 };
 
 const loadFabric = () => import('fabric');
+
+const VIDEO_POLL_INTERVAL_MS = 3000;
+const VIDEO_MAX_POLL_ATTEMPTS = 600;
+
+const sleepWithAbort = (ms, signal) => new Promise((resolve, reject) => {
+  if (signal?.aborted) {
+    reject(new DOMException('Aborted', 'AbortError'));
+    return;
+  }
+
+  const timeoutId = setTimeout(resolve, ms);
+  signal?.addEventListener('abort', () => {
+    clearTimeout(timeoutId);
+    reject(new DOMException('Aborted', 'AbortError'));
+  }, { once: true });
+});
 
 const addGeneratedImageToCanvas = async ({
   fabricInstance,
@@ -423,6 +447,9 @@ export const useAppStore = create((set, get) => ({
   resolution: '2K',            // 生图分辨率
   aspectRatio: 'auto',         // 生图比例
   numImages: 1,                // 生图数量（默认 1 张）
+  videoDurationSeconds: 5,     // Seedance 视频时长
+  videoResolution: '720p',     // Seedance 视频清晰度
+  videoFrameMode: 'auto',      // Seedance 视频输入模式
   selectedModel: '',           // 生图模型（默认未选择）
   theme: initialTheme,
   setAgentMode: (mode) => set({ agentMode: mode }),
@@ -434,6 +461,9 @@ export const useAppStore = create((set, get) => ({
   setResolution: (res) => set({ resolution: res }),
   setAspectRatio: (ratio) => set({ aspectRatio: ratio }),
   setNumImages: (num) => set({ numImages: num }),
+  setVideoDurationSeconds: (duration) => set({ videoDurationSeconds: normalizeVideoDurationSeconds(duration) }),
+  setVideoResolution: (resolution) => set({ videoResolution: normalizeSeedanceResolution(resolution) }),
+  setVideoFrameMode: (mode) => set({ videoFrameMode: normalizeSeedanceVideoMode(mode) }),
   setSelectedModel: (model) => set({ selectedModel: model }),
   setTheme: (theme) => {
     const nextTheme = persistThemePreference(theme);
@@ -1379,6 +1409,164 @@ export const useAppStore = create((set, get) => ({
       console.error('Failed to generate image:', error);
       addChatMessage('assistant', '生成失败，请重试');
       set({ ...clearRequestState, isGenerating: false });
+    }
+  },
+
+  generateVideo: async (userParams, imageDatas) => {
+    const {
+      token,
+      user,
+      setUser,
+      refreshBilling,
+      workspaceChatMessages,
+      selectedModel,
+      aspectRatio,
+      videoDurationSeconds,
+      videoResolution,
+      videoFrameMode,
+      ensureAuthenticatedForModelAction,
+    } = get();
+
+    if (!ensureAuthenticatedForModelAction('生成视频')) {
+      return;
+    }
+
+    const normalizedImages = normalizeReferenceImages(imageDatas);
+    const userMsg = {
+      role: 'user',
+      content: userParams || '生成视频',
+      imageDatas: [...normalizedImages],
+    };
+    const updated = [...workspaceChatMessages, userMsg];
+    const generationRequest = createGenerationRequestState();
+    const clearRequestState = clearGenerationRequestState();
+
+    set({
+      workspaceChatMessages: updated,
+      isGenerating: true,
+      ...generationRequest.nextState,
+    });
+
+    try {
+      const response = await fetch(`${API_BASE}/v1/video/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        signal: generationRequest.signal,
+        body: JSON.stringify({
+          request_id: createClientRequestId(),
+          prompt: userParams,
+          image_data: normalizedImages[0] || null,
+          image_datas: normalizedImages.length > 0 ? normalizedImages : null,
+          aspect_ratio: aspectRatio,
+          resolution: normalizeSeedanceResolution(videoResolution),
+          video_mode: resolveSeedanceVideoMode(videoFrameMode, normalizedImages.length),
+          duration_seconds: normalizeVideoDurationSeconds(videoDurationSeconds),
+          selected_model: selectedModel || 'seedance-2.0',
+        }),
+      });
+      const createdTask = await response.json();
+
+      if (!response.ok) {
+        const errorText = response.status === 402 ? '积分不足，请充值' : (createdTask.detail || '视频任务创建失败');
+        set({
+          workspaceChatMessages: [...updated, { role: 'assistant', content: errorText }],
+          ...clearRequestState,
+          isGenerating: false,
+        });
+        return;
+      }
+
+      const taskId = createdTask.task_id;
+      set({
+        workspaceChatMessages: [
+          ...updated,
+          { role: 'assistant', content: 'Seedance 视频任务已提交，正在生成...' },
+        ],
+      });
+
+      for (let attempt = 0; attempt < VIDEO_MAX_POLL_ATTEMPTS; attempt += 1) {
+        if (attempt > 0) {
+          await sleepWithAbort(VIDEO_POLL_INTERVAL_MS, generationRequest.signal);
+        }
+
+        const taskResponse = await fetch(`${API_BASE}/v1/video/tasks/${taskId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+          signal: generationRequest.signal,
+        });
+        const taskData = await taskResponse.json();
+
+        if (!taskResponse.ok) {
+          throw new Error(taskData.detail || '视频任务查询失败');
+        }
+
+        const taskState = buildVideoTaskPollingState(taskData);
+        if (!taskState.isTerminal) {
+          continue;
+        }
+
+        if (!taskState.isSuccess) {
+          set({
+            workspaceChatMessages: [...get().workspaceChatMessages, {
+              role: 'assistant',
+              content: 'Seedance 视频生成失败，积分已自动退回。',
+            }],
+            ...clearRequestState,
+            isGenerating: false,
+          });
+          refreshBilling().catch(() => null);
+          return;
+        }
+
+        const videoUrl = getVideoUrlOrThrow(taskData);
+        set({
+          workspaceChatMessages: [...get().workspaceChatMessages, {
+            role: 'assistant',
+            content: 'Seedance 视频已生成',
+            videoUrl: videoUrl,
+          }],
+          ...clearRequestState,
+          generatedImage: null,
+          isGenerating: false,
+          chatInput: '',
+        });
+
+        if (user && typeof taskData.remaining_credits === 'number') {
+          setUser({ ...user, credits: taskData.remaining_credits });
+        }
+        refreshBilling().catch(() => null);
+        return;
+      }
+
+      set({
+        workspaceChatMessages: [...get().workspaceChatMessages, {
+          role: 'assistant',
+          content: `视频仍在生成中，任务 ID：${taskId}。请稍后再试，或把任务 ID 发给管理员查询。`,
+        }],
+        ...clearRequestState,
+        isGenerating: false,
+      });
+    } catch (error) {
+      if (isAbortGenerationError(error)) {
+        get().addSystemMessage('已取消本次视频生成请求');
+        toast('已取消本次视频生成请求');
+        set({ ...clearRequestState, isGenerating: false });
+        return;
+      }
+
+      console.error('Failed to generate video:', error);
+      set({
+        workspaceChatMessages: [...get().workspaceChatMessages, {
+          role: 'assistant',
+          content: error.message || '视频生成失败，请重试',
+        }],
+        ...clearRequestState,
+        isGenerating: false,
+      });
     }
   },
 }));

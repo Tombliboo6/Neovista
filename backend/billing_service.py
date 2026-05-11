@@ -6,7 +6,7 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from models import CreditTransaction, RedemptionCode, User
-from pricing import WELCOME_CREDITS, calculate_generation_cost
+from pricing import WELCOME_CREDITS, calculate_generation_cost, calculate_video_generation_cost
 
 
 def _create_transaction(
@@ -72,6 +72,51 @@ def create_generation_hold(
         return existing
 
     cost = calculate_generation_cost(resolution, num_images, selected_model)
+    result = db.execute(
+        update(User)
+        .where(
+            User.id == user.id,
+            User.credits >= cost,
+        )
+        .values(credits=User.credits - cost)
+    )
+    if result.rowcount == 0:
+        raise ValueError("积分不足")
+
+    db.flush()
+    db.refresh(user)
+
+    hold = _create_transaction(
+        db,
+        user=user,
+        tx_type="GENERATE_HOLD",
+        amount=-cost,
+        status="PENDING",
+        balance_after=user.credits,
+        idempotency_key=idempotency_key,
+        related_request_id=request_id,
+    )
+    return hold
+
+
+def create_video_generation_hold(
+    db: Session,
+    user: User,
+    *,
+    duration_seconds: int,
+    resolution: str,
+    request_id: str,
+    idempotency_key: str,
+    selected_model: Optional[str] = None,
+):
+    existing = db.query(CreditTransaction).filter(
+        CreditTransaction.idempotency_key == idempotency_key,
+        CreditTransaction.type == "GENERATE_HOLD",
+    ).first()
+    if existing and existing.status != "REFUNDED":
+        return existing
+
+    cost = calculate_video_generation_cost(duration_seconds, selected_model, resolution)
     result = db.execute(
         update(User)
         .where(
