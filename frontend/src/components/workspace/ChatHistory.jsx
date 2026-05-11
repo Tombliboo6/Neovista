@@ -1,5 +1,5 @@
 import { useAppStore } from '../../store/useAppStore';
-import { Trash2, CheckCircle, RotateCcw, FileSearch, ThumbsUp, AlertTriangle, Lightbulb } from 'lucide-react';
+import { Trash2, CheckCircle, RotateCcw, FileSearch, ThumbsUp, AlertTriangle, Lightbulb, Download } from 'lucide-react';
 import GenerateParamsModal from './GenerateParamsModal';
 import toast from 'react-hot-toast';
 import { resolveReferenceImages } from '../../lib/referenceImages.js';
@@ -101,6 +101,40 @@ export default function ChatHistory() {
   const handleAdjustParams = () => {
     enterTemplateAdjustMode();
     triggerTemplateAdjustParams();
+  };
+
+  const downloadViaLink = (imageUrl, filename) => {
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = filename;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
+  const handleDownloadImage = async (imageUrl) => {
+    if (!imageUrl) return;
+
+    const filename = `neovista-generated-${Date.now()}.png`;
+    if (imageUrl.startsWith('data:')) {
+      downloadViaLink(imageUrl, filename);
+      return;
+    }
+
+    try {
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        throw new Error('download failed');
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      downloadViaLink(objectUrl, filename);
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      downloadViaLink(imageUrl, filename);
+      toast('如果浏览器没有直接保存，请在打开的图片中右键另存为');
+    }
   };
 
   const handleConfirmGenerateClick = async () => {
@@ -220,13 +254,22 @@ export default function ChatHistory() {
                   <div className="space-y-1.5">
                     <img src={msg.imageUrl} alt="" className="w-full rounded-xl object-cover" style={{ maxHeight: '200px' }} />
                     {msg.templateName && <p className="text-xs text-white/25 px-1">模板：{msg.templateName}</p>}
-                    <button
-                      onClick={() => auditDiagram(msg.imageUrl)}
-                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition hover:bg-white/10"
-                      style={{ border: '1px solid var(--border-subtle)', color: 'var(--accent-primary-strong)' }}
-                    >
-                      <FileSearch size={12} /> 审图分析
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => handleDownloadImage(msg.imageUrl)}
+                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition hover:bg-white/10"
+                        style={{ border: '1px solid var(--border-subtle)', color: 'var(--accent-primary-strong)' }}
+                      >
+                        <Download size={12} /> 下载原图
+                      </button>
+                      <button
+                        onClick={() => auditDiagram(msg.imageUrl)}
+                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition hover:bg-white/10"
+                        style={{ border: '1px solid var(--border-subtle)', color: 'var(--accent-primary-strong)' }}
+                      >
+                        <FileSearch size={12} /> 审图分析
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

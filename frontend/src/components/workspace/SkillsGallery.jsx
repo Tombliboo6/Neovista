@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Heart, TrendingUp, Image, ArrowLeft, Zap, Edit3 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
+import { getGalleryApiEndpoint } from '../../lib/galleryPerformance.js';
 
 export default function SkillsGallery() {
   const [templates, setTemplates] = useState([]);
@@ -14,10 +15,10 @@ export default function SkillsGallery() {
   const canvasDataUrl = useAppStore((state) => state.canvasDataUrl);
 
   useEffect(() => {
-    fetch('/api/templates')
+    fetch(getGalleryApiEndpoint())
       .then(res => res.json())
       .then(data => {
-        setTemplates(data);
+        setTemplates(data.templates || data || []);
         setLoading(false);
       })
       .catch(err => {

@@ -11,3 +11,10 @@ test('ChatHistory renders uploaded user images together with the same user messa
   assert.match(source, /<div className="max-w-\[85%\] space-y-2">/);
   assert.match(source, /className="max-w-\[85%\] rounded-xl px-3 py-2 text-xs text-white\/80"/);
 });
+
+test('ChatHistory exposes a generated original image download action', () => {
+  assert.match(source, /Download/);
+  assert.match(source, /const handleDownloadImage = async \(imageUrl\) =>/);
+  assert.match(source, /handleDownloadImage\(msg\.imageUrl\)/);
+  assert.match(source, />\s*<Download size=\{12\} \/> 下载原图\s*<\/button>/);
+});

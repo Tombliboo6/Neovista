@@ -21,6 +21,11 @@ test('AgentChatInput resolves request payloads from plural reference images', ()
   assert.match(source, /generateImage\(userInput,\s*null,\s*null,\s*resolveImageDataList\(\)\)/);
 });
 
+test('AgentChatInput safely exports selected canvas images', () => {
+  assert.match(source, /import \{ safeCanvasToDataUrl \} from '..\/..\/lib\/canvasExport\.js';/);
+  assert.match(source, /return safeCanvasToDataUrl\(activeObj,\s*\{\s*format: 'jpeg',\s*quality: 0\.85,\s*multiplier: 1,\s*\}\);/);
+});
+
 test('AgentChatInput exposes GPT Image 2.0 as a generation model option', () => {
   assert.match(source, /<option value="gpt-image-2">GPT Image 2\.0<\/option>/);
 });

@@ -37,11 +37,11 @@ export default function HomeSearchBox() {
   ];
 
   return (
-    <section className="mx-auto w-full max-w-[1120px] px-4 pb-8 pt-28 sm:px-6 lg:pt-32">
-      <div className="mb-8 grid gap-4 md:grid-cols-[1fr_18rem] md:items-end">
-        <div>
+    <section className="mx-auto w-full max-w-[1120px] overflow-x-hidden px-4 pb-8 pt-24 sm:px-6 sm:pt-28 lg:pt-32">
+      <div className="mb-8 grid min-w-0 gap-4 md:grid-cols-[1fr_18rem] md:items-end">
+        <div className="min-w-0">
           <p className="mb-3 text-xs uppercase text-white/40">NeoVista Design Console</p>
-          <h1 className="max-w-3xl font-display text-4xl font-semibold leading-tight text-white/90 md:text-6xl">
+          <h1 className="max-w-3xl break-words font-display text-3xl font-semibold leading-tight text-white/90 sm:text-4xl md:text-6xl">
             用一句设计意图，启动专业分析图工作流
           </h1>
         </div>
@@ -75,12 +75,12 @@ export default function HomeSearchBox() {
             onBlur={() => setIsFocused(false)}
             placeholder="例如：为滨水更新片区生成场地肌理、慢行流线与生态滞洪关系分析图"
             disabled={isSubmitting}
-            className="min-h-[112px] flex-1 resize-none bg-transparent text-lg leading-8 text-white/90 placeholder-white/25 focus:outline-none disabled:opacity-60"
+            className="min-h-[112px] min-w-0 flex-1 resize-none bg-transparent text-base leading-7 text-white/90 placeholder-white/25 focus:outline-none disabled:opacity-60 sm:text-lg sm:leading-8"
           />
         </div>
 
-        <div className="mt-5 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: 'var(--border-subtle)' }}>
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="mt-5 flex min-w-0 flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: 'var(--border-subtle)' }}>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             {tools.map(({ icon, title, label }) => (
               <button
                 key={title}

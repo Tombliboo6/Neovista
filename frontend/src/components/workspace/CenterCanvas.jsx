@@ -1,5 +1,6 @@
 import FabricCanvas from './FabricCanvas';
 import { useAppStore } from '../../store/useAppStore';
+import { safeCanvasToDataUrl } from '../../lib/canvasExport.js';
 
 export default function CenterCanvas() {
   const setCanvasDataUrl = useAppStore((state) => state.setCanvasDataUrl);
@@ -7,8 +8,8 @@ export default function CenterCanvas() {
   const exportCanvas = () => {
     const canvas = document.querySelector('canvas');
     if (canvas) {
-      const dataUrl = canvas.toDataURL('image/png');
-      setCanvasDataUrl(dataUrl);
+      const dataUrl = safeCanvasToDataUrl(canvas, 'image/png');
+      if (dataUrl) setCanvasDataUrl(dataUrl);
     }
   };
 

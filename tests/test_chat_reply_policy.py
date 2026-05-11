@@ -3,6 +3,7 @@ import pathlib
 import sys
 import unittest
 from unittest.mock import AsyncMock, patch
+from fastapi import HTTPException
 
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -167,6 +168,25 @@ class ChatReplyPolicyTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(response.ready_to_generate)
         self.assertEqual(response.suggested_template_id, "1.1.1")
         self.assertEqual(response.suggested_params, {"title": "", "data": ""})
+
+    async def test_workspace_chat_rate_limit_returns_429(self):
+        request = main.WorkspaceChatRequest(
+            messages=[main.WorkspaceChatMessage(role="user", content="继续分析")],
+            agent_mode=True,
+            session_id=None,
+        )
+
+        with patch.object(main, "extract_client_ip", return_value="1.1.1.1"):
+            with patch.object(
+                main,
+                "check_and_increment_ip_limit",
+                side_effect=ValueError("请求过于频繁，请稍后再试"),
+            ):
+                with self.assertRaises(HTTPException) as raised:
+                    await main.workspace_chat(request, object(), None)
+
+        self.assertEqual(raised.exception.status_code, 429)
+        self.assertEqual(raised.exception.detail, "请求过于频繁，请稍后再试")
 
 
 if __name__ == "__main__":

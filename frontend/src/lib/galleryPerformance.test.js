@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  getGalleryApiEndpoint,
   getImageLoadingStrategy,
   getNextVisibleCount,
   getPrimaryTemplateImage,
@@ -31,4 +32,8 @@ test('getImageLoadingStrategy keeps only the first few cards eager', () => {
     loading: 'lazy',
     fetchPriority: 'auto',
   });
+});
+
+test('getGalleryApiEndpoint uses the compact v1 template summary API', () => {
+  assert.equal(getGalleryApiEndpoint(), '/api/v1/templates');
 });

@@ -116,7 +116,7 @@ export default function Workspace() {
 
   return (
     <>
-      <div className="flex min-h-[100dvh] items-center justify-center px-8 text-center md:hidden" style={{ background: 'var(--surface-0)' }}>
+      <div className="flex min-h-[100dvh] max-w-[100vw] items-center justify-center overflow-x-hidden px-4 text-center md:hidden" style={{ background: 'var(--surface-0)' }}>
         <div className="max-w-sm rounded-2xl border px-6 py-7" style={{ background: 'var(--surface-1)', borderColor: 'var(--border-subtle)', boxShadow: 'var(--shadow-panel)' }}>
           <p className="mb-2 font-display text-xl font-semibold text-white/90">请在桌面端打开工作区</p>
           <p className="text-sm leading-6 text-white/45">NeoVista 画布、技能面板和图层工具需要更宽的操作空间。</p>
@@ -132,6 +132,7 @@ export default function Workspace() {
             className="absolute right-3 top-3 z-10 rounded-lg p-2 transition hover:bg-white/10 lg:hidden"
             style={{ background: 'var(--surface-1)', border: '1px solid var(--border-subtle)' }}
             title={rightPanelOpen ? '收起面板' : '展开面板'}
+            aria-label={rightPanelOpen ? '收起面板' : '展开面板'}
           >
             <PanelRight size={16} className="text-white/50" />
           </button>

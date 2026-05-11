@@ -28,6 +28,17 @@ test('useAppStore loads fabric lazily so the home page does not pay for workspac
   assert.match(storeSource, /const \{ FabricImage \} = await loadFabric\(\);/);
 });
 
+test('useAppStore loads generated images with cross-origin-safe fabric options', () => {
+  assert.match(storeSource, /import \{[\s\S]*createCanvasSafeFabricImage,[\s\S]*safeCanvasToDataUrl,[\s\S]*\} from '..\/lib\/canvasExport\.js';/);
+  assert.match(storeSource, /const img = await createCanvasSafeFabricImage\(FabricImage,\s*imageUrl\);/);
+});
+
+test('useAppStore guards every canvas export that can be triggered by user actions', () => {
+  assert.match(storeSource, /safeCanvasToDataUrl\(canvas,\s*'image\/jpeg',\s*quality\)/);
+  assert.match(storeSource, /safeCanvasToDataUrl\(activeObject,\s*\{/);
+  assert.match(storeSource, /safeCanvasToDataUrl\(fabricInstance,\s*\{\s*format: 'png',\s*quality: 0\.8,\s*\}\)/);
+});
+
 test('bootstrapAuth restores the logged-in user from a persisted token', () => {
   assert.match(storeSource, /bootstrapAuth:\s*async\s*\(\)\s*=>/);
   assert.match(storeSource, /fetch\(`\$\{API_BASE\}\/v1\/auth\/me`/);

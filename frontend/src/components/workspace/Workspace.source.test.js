@@ -22,3 +22,7 @@ test('Workspace exposes drag resizing and a wide panel mode for desktop use', ()
   assert.match(source, /setRightPanelWidth\(nextWidth\);/);
 });
 
+test('Workspace mobile fallback is constrained to the viewport', () => {
+  assert.match(source, /max-w-\[100vw\]/);
+  assert.match(source, /overflow-x-hidden/);
+});

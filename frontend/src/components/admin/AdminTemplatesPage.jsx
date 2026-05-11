@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Edit2, Trash2, Plus, Save, X, Image as ImageIcon } from 'lucide-react';
 import TemplateDetailModal from '../home/TemplateDetailModal';
 
@@ -11,21 +11,7 @@ export default function AdminTemplatesPage() {
 
   const adminToken = localStorage.getItem('adminToken');
 
-  useEffect(() => {
-    if (!adminToken) {
-      const token = window.prompt('请输入管理员密钥：');
-      if (token) {
-        localStorage.setItem('adminToken', token);
-        window.location.reload();
-      } else {
-        window.location.href = '/';
-      }
-    } else {
-      loadTemplates();
-    }
-  }, [adminToken]);
-
-  const loadTemplates = async () => {
+  const loadTemplates = useCallback(async () => {
     try {
       const response = await fetch('/api/v1/admin/templates', {
         headers: { 'x-admin-token': adminToken }
@@ -42,7 +28,21 @@ export default function AdminTemplatesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [adminToken]);
+
+  useEffect(() => {
+    if (!adminToken) {
+      const token = window.prompt('请输入管理员密钥：');
+      if (token) {
+        localStorage.setItem('adminToken', token);
+        window.location.reload();
+      } else {
+        window.location.href = '/';
+      }
+    } else {
+      loadTemplates();
+    }
+  }, [adminToken, loadTemplates]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">

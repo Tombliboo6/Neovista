@@ -9,6 +9,7 @@ import {
   mergeReferenceImages,
   resolveReferenceImages,
 } from '../../lib/referenceImages.js';
+import { safeCanvasToDataUrl } from '../../lib/canvasExport.js';
 
 const TARGET_MAX_BYTES = 2 * 1024 * 1024;
 const MAX_DIMENSION = 1536;
@@ -34,17 +35,29 @@ function compressImage(file) {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
         let quality = 0.9;
-        let dataUrl = canvas.toDataURL('image/jpeg', quality);
+        let dataUrl = safeCanvasToDataUrl(canvas, 'image/jpeg', quality);
+        if (!dataUrl) {
+          reject(new Error('图片导出失败'));
+          return;
+        }
         while (dataUrl.length > TARGET_MAX_BYTES && quality > 0.1) {
           quality -= 0.1;
-          dataUrl = canvas.toDataURL('image/jpeg', quality);
+          dataUrl = safeCanvasToDataUrl(canvas, 'image/jpeg', quality);
+          if (!dataUrl) {
+            reject(new Error('图片导出失败'));
+            return;
+          }
         }
         if (dataUrl.length > TARGET_MAX_BYTES) {
           canvas.width = Math.round(width * 0.7);
           canvas.height = Math.round(height * 0.7);
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           quality = 0.7;
-          dataUrl = canvas.toDataURL('image/jpeg', quality);
+          dataUrl = safeCanvasToDataUrl(canvas, 'image/jpeg', quality);
+          if (!dataUrl) {
+            reject(new Error('图片导出失败'));
+            return;
+          }
         }
         const finalKB = Math.round(dataUrl.length / 1024);
         const originalKB = Math.round(originalSize / 1024);
@@ -89,11 +102,11 @@ export default function AgentChatInput() {
     if (!fabricInstance) return null;
     const activeObj = fabricInstance.getActiveObject();
     if (activeObj && activeObj.type === 'image') {
-      try {
-        return activeObj.toDataURL({ format: 'jpeg', quality: 0.85, multiplier: 1 });
-      } catch {
-        return null;
-      }
+      return safeCanvasToDataUrl(activeObj, {
+        format: 'jpeg',
+        quality: 0.85,
+        multiplier: 1,
+      });
     }
     return null;
   };
@@ -275,6 +288,7 @@ export default function AgentChatInput() {
                 onClick={() => removeUploadedImageAt(index)}
                 className="absolute -top-1 -right-1 p-0.5 rounded-full hover:bg-white/10 transition"
                 style={{ background: 'var(--surface-2)' }}
+                aria-label={`移除第 ${index + 1} 张参考图`}
               >
                 <X size={11} className="text-white/50" />
               </button>
@@ -305,6 +319,7 @@ export default function AgentChatInput() {
             disabled={isLoading}
             className="rounded-lg p-1.5 transition hover:bg-white/10 disabled:opacity-30"
             title="上传图片"
+            aria-label="上传图片"
           >
             <Paperclip size={14} className="text-white/40" />
           </button>
@@ -313,6 +328,7 @@ export default function AgentChatInput() {
             disabled={isWorkspaceChatLoading || sendButtonState.disabled}
             className="rounded-lg p-1.5 transition disabled:opacity-30 active:scale-[0.96]"
             title={sendButtonState.mode === 'cancel' ? '取消生图' : '发送'}
+            aria-label={sendButtonState.mode === 'cancel' ? '取消生图' : '发送'}
             style={{
               background: sendButtonState.mode === 'cancel'
                 ? 'rgba(239,68,68,0.9)'

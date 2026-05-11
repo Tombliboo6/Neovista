@@ -15,6 +15,12 @@ class NginxCacheConfigTests(unittest.TestCase):
         self.assertRegex(config, r'add_header Cache-Control "no-store, no-cache, must-revalidate"')
         self.assertRegex(config, r'expires -1;')
 
+    def test_favicon_ico_falls_back_to_svg_asset(self):
+        config = NGINX_CONFIG.read_text(encoding="utf-8")
+
+        self.assertRegex(config, r"location = /favicon\.ico\s*\{")
+        self.assertRegex(config, r"try_files /favicon\.svg =404;")
+
 
 if __name__ == "__main__":
     unittest.main()

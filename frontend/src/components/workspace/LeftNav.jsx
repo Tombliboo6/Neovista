@@ -37,41 +37,41 @@ export default function LeftNav() {
   return (
     <div className="flex w-[68px] flex-col items-center py-5" style={{ background: 'var(--surface-1)', borderRight: '1px solid var(--border-subtle)' }}>
       <div className="flex flex-1 flex-col items-center gap-3">
-        <button onClick={() => navigate('/')} className={btn(false)} style={buttonStyle(false)} title="首页"><Home size={18} /></button>
-        <button onClick={() => navigate('/workspace')} className={btn(false)} style={buttonStyle(false)} title="项目"><Folder size={18} /></button>
+        <button onClick={() => navigate('/')} className={btn(false)} style={buttonStyle(false)} title="首页" aria-label="首页"><Home size={18} /></button>
+        <button onClick={() => navigate('/workspace')} className={btn(false)} style={buttonStyle(false)} title="项目" aria-label="项目"><Folder size={18} /></button>
 
         {divider}
 
-        <button onClick={() => setDrawingMode(false)} className={btn(!drawingMode)} style={buttonStyle(!drawingMode)} title="选择"><MousePointer size={18} /></button>
-        <button onClick={() => setDrawingMode(true)} className={btn(drawingMode)} style={buttonStyle(drawingMode)} title="画笔"><Paintbrush size={18} /></button>
-        <button onClick={addText} className={btn(false)} style={buttonStyle(false)} title="文字"><Type size={18} /></button>
+        <button onClick={() => setDrawingMode(false)} className={btn(!drawingMode)} style={buttonStyle(!drawingMode)} title="选择" aria-label="选择"><MousePointer size={18} /></button>
+        <button onClick={() => setDrawingMode(true)} className={btn(drawingMode)} style={buttonStyle(drawingMode)} title="画笔" aria-label="画笔"><Paintbrush size={18} /></button>
+        <button onClick={addText} className={btn(false)} style={buttonStyle(false)} title="文字" aria-label="添加文字"><Type size={18} /></button>
 
         {divider}
 
-        <label className={btn(false) + ' cursor-pointer'} style={buttonStyle(false)} title="上传图片">
+        <label className={btn(false) + ' cursor-pointer'} style={buttonStyle(false)} title="上传图片" aria-label="上传图片">
           <Upload size={18} />
           <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
         </label>
-        <button onClick={() => saveProject()} className={btn(false)} style={buttonStyle(false)} title="保存"><Save size={18} /></button>
-        <button onClick={downloadCanvas} className={btn(false)} style={buttonStyle(false)} title="下载 PNG"><Download size={18} /></button>
+        <button onClick={() => saveProject()} className={btn(false)} style={buttonStyle(false)} title="保存" aria-label="保存项目"><Save size={18} /></button>
+        <button onClick={downloadCanvas} className={btn(false)} style={buttonStyle(false)} title="下载 PNG" aria-label="下载 PNG"><Download size={18} /></button>
 
         {divider}
 
-        <button onClick={bringForward} className={btn(false)} style={buttonStyle(false)} title="上移一层"><ArrowUp size={18} /></button>
-        <button onClick={sendBackward} className={btn(false)} style={buttonStyle(false)} title="下移一层"><ArrowDown size={18} /></button>
+        <button onClick={bringForward} className={btn(false)} style={buttonStyle(false)} title="上移一层" aria-label="上移一层"><ArrowUp size={18} /></button>
+        <button onClick={sendBackward} className={btn(false)} style={buttonStyle(false)} title="下移一层" aria-label="下移一层"><ArrowDown size={18} /></button>
 
         {divider}
 
-        <button onClick={undo} disabled={historyIndex <= 0} className={btn(false) + ' disabled:opacity-20'} style={buttonStyle(false)} title="撤销"><Undo2 size={18} /></button>
-        <button onClick={redo} disabled={historyIndex >= canvasHistory.length - 1} className={btn(false) + ' disabled:opacity-20'} style={buttonStyle(false)} title="重做"><Redo2 size={18} /></button>
-        <button onClick={clearCanvas} className="rounded-xl p-2.5 text-red-400/60 transition hover:bg-red-500/10 hover:text-red-300 active:scale-[0.96]" title="清空"><Trash2 size={18} /></button>
+        <button onClick={undo} disabled={historyIndex <= 0} className={btn(false) + ' disabled:opacity-20'} style={buttonStyle(false)} title="撤销" aria-label="撤销"><Undo2 size={18} /></button>
+        <button onClick={redo} disabled={historyIndex >= canvasHistory.length - 1} className={btn(false) + ' disabled:opacity-20'} style={buttonStyle(false)} title="重做" aria-label="重做"><Redo2 size={18} /></button>
+        <button onClick={clearCanvas} className="rounded-xl p-2.5 text-red-400/60 transition hover:bg-red-500/10 hover:text-red-300 active:scale-[0.96]" title="清空" aria-label="清空画布"><Trash2 size={18} /></button>
 
         {divider}
 
-        <button onClick={() => navigate('/settings')} className={btn(false)} style={buttonStyle(false)} title="设置"><Settings size={18} /></button>
+        <button onClick={() => navigate('/settings')} className={btn(false)} style={buttonStyle(false)} title="设置" aria-label="设置"><Settings size={18} /></button>
       </div>
 
-      <button onClick={() => navigate('/profile')} className={btn(false)} style={buttonStyle(false)} title="个人中心"><User size={18} /></button>
+      <button onClick={() => navigate('/profile')} className={btn(false)} style={buttonStyle(false)} title="个人中心" aria-label="个人中心"><User size={18} /></button>
     </div>
   );
 }

@@ -1382,6 +1382,8 @@ async def workspace_chat(request: WorkspaceChatRequest, http_request: Request, d
             suggested_params=params,
         )
 
+    except ValueError as e:
+        raise HTTPException(status_code=429, detail=str(e))
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:

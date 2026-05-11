@@ -17,6 +17,10 @@ import {
   persistThemePreference,
 } from '../lib/themeState.js';
 import { normalizeReferenceImages } from '../lib/referenceImages.js';
+import {
+  createCanvasSafeFabricImage,
+  safeCanvasToDataUrl,
+} from '../lib/canvasExport.js';
 
 const initialTheme = getStoredThemePreference();
 applyThemePreference(initialTheme);
@@ -175,7 +179,7 @@ const addGeneratedImageToCanvas = async ({
   setProgrammaticUpdate(true);
   try {
     const { FabricImage } = await loadFabric();
-    const img = await FabricImage.fromURL(imageUrl);
+    const img = await createCanvasSafeFabricImage(FabricImage, imageUrl);
     const scale = Math.min(
       fabricInstance.width * 0.6 / img.width,
       fabricInstance.height * 0.6 / img.height
@@ -736,11 +740,22 @@ export const useAppStore = create((set, get) => ({
           ctx.drawImage(uploadedImage.getElement(), 0, 0, canvas.width, canvas.height);
 
           let quality = 0.8;
-          let compressed = canvas.toDataURL('image/jpeg', quality);
+          let compressed = safeCanvasToDataUrl(canvas, 'image/jpeg', quality);
+
+          if (!compressed) {
+            addChatMessage('assistant', '参考底图导出失败，请重新上传图片后再试。');
+            set({ ...clearRequestState, isGenerating: false });
+            return;
+          }
 
           while (compressed.length > 2 * 1024 * 1024 && quality > 0.1) {
             quality -= 0.1;
-            compressed = canvas.toDataURL('image/jpeg', quality);
+            compressed = safeCanvasToDataUrl(canvas, 'image/jpeg', quality);
+            if (!compressed) {
+              addChatMessage('assistant', '参考底图导出失败，请重新上传图片后再试。');
+              set({ ...clearRequestState, isGenerating: false });
+              return;
+            }
           }
 
           base_image = compressed;
@@ -1102,11 +1117,16 @@ export const useAppStore = create((set, get) => ({
 
     if (activeObject) {
       // 有选中对象，仅下载选中对象
-      const dataURL = activeObject.toDataURL({
+      const dataURL = safeCanvasToDataUrl(activeObject, {
         format: 'png',
         quality: 1,
         multiplier: 2
       });
+
+      if (!dataURL) {
+        toast.error('当前对象无法导出，请重新上传图片后再试');
+        return;
+      }
 
       const link = document.createElement('a');
       link.download = `neovista-selection-${Date.now()}.png`;
@@ -1128,7 +1148,14 @@ export const useAppStore = create((set, get) => ({
     const { fabricInstance } = get();
     if (!fabricInstance) return;
 
-    const thumbnail = fabricInstance.toDataURL({ format: 'png', quality: 0.8 });
+    const thumbnail = safeCanvasToDataUrl(fabricInstance, {
+      format: 'png',
+      quality: 0.8,
+    });
+    if (!thumbnail) {
+      toast.error('项目缩略图生成失败，请重新上传图片后再试');
+      return;
+    }
     const recentProjects = JSON.parse(localStorage.getItem('neovista_recent_projects') || '[]');
 
     recentProjects.unshift({
