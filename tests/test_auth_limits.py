@@ -58,6 +58,40 @@ class AuthLimitTest(unittest.TestCase):
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 429)
 
+    def test_login_returns_429_after_ip_hourly_limit(self):
+        with patch.object(auth_module, "LOGIN_IP_HOURLY_LIMIT", 1, create=True):
+            with patch.object(auth_module, "LOGIN_EMAIL_HOURLY_LIMIT", 100, create=True):
+                first = self.client.post(
+                    "/api/v1/auth/login",
+                    json={"email": "missing@example.com", "password": "wrongpass1"},
+                    headers={"x-forwarded-for": "9.9.9.9"},
+                )
+                second = self.client.post(
+                    "/api/v1/auth/login",
+                    json={"email": "other@example.com", "password": "wrongpass1"},
+                    headers={"x-forwarded-for": "9.9.9.9"},
+                )
+
+        self.assertEqual(first.status_code, 400)
+        self.assertEqual(second.status_code, 429)
+
+    def test_login_returns_429_after_email_hourly_limit(self):
+        with patch.object(auth_module, "LOGIN_IP_HOURLY_LIMIT", 100, create=True):
+            with patch.object(auth_module, "LOGIN_EMAIL_HOURLY_LIMIT", 1, create=True):
+                first = self.client.post(
+                    "/api/v1/auth/login",
+                    json={"email": "target@example.com", "password": "wrongpass1"},
+                    headers={"x-forwarded-for": "9.9.9.10"},
+                )
+                second = self.client.post(
+                    "/api/v1/auth/login",
+                    json={"email": "target@example.com", "password": "wrongpass1"},
+                    headers={"x-forwarded-for": "9.9.9.11"},
+                )
+
+        self.assertEqual(first.status_code, 400)
+        self.assertEqual(second.status_code, 429)
+
 
 if __name__ == "__main__":
     unittest.main()

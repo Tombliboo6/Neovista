@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -173,6 +174,56 @@ class DashboardApiTest(unittest.TestCase):
         payload = response.json()
         self.assertIn("active_alerts", payload)
         self.assertIn("recent_history", payload)
+
+    def test_public_channels_endpoint_does_not_expose_provider_details(self):
+        channels = (
+            main.APIChannel(
+                name="PrivateProvider",
+                base_url="https://private-provider.example.com",
+                api_key="secret-key",
+                model="private-model",
+            ),
+        )
+
+        with patch.object(main, "API_CHANNELS", channels):
+            response = self.client.get("/api/v1/channels")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total"], 1)
+        self.assertTrue(payload["configured"])
+        self.assertNotIn("channels", payload)
+        self.assertNotIn("private-provider", response.text)
+        self.assertNotIn("secret-key", response.text)
+
+    def test_admin_channels_endpoint_requires_admin_token(self):
+        response = self.client.get("/api/v1/admin/channels")
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_channels_endpoint_exposes_non_secret_provider_metadata(self):
+        channels = (
+            main.APIChannel(
+                name="PrivateProvider",
+                base_url="https://private-provider.example.com",
+                api_key="secret-key",
+                model="private-model",
+            ),
+        )
+
+        with patch.object(main, "API_CHANNELS", channels):
+            response = self.client.get(
+                "/api/v1/admin/channels",
+                headers=self.admin_headers,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total"], 1)
+        self.assertEqual(payload["channels"][0]["name"], "PrivateProvider")
+        self.assertEqual(payload["channels"][0]["base_url"], "https://private-provider.example.com")
+        self.assertNotIn("api_key", payload["channels"][0])
+        self.assertNotIn("secret-key", response.text)
 
 
 if __name__ == "__main__":

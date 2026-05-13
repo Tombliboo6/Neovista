@@ -5,12 +5,17 @@ from pydantic import BaseModel, Field
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 import bcrypt
+import hashlib
 import random
 import os
 
 from database import get_db
 from billing_service import grant_welcome_credits
-from rate_limit_service import check_and_increment_ip_limit, extract_client_ip
+from rate_limit_service import (
+    check_and_increment_ip_limit,
+    check_and_increment_subject_limit,
+    extract_client_ip,
+)
 from models import User, EmailVerification
 from email_utils import send_verification_email
 
@@ -23,6 +28,8 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7天
 SEND_CODE_IP_HOURLY_LIMIT = int(os.getenv("SEND_CODE_IP_HOURLY_LIMIT", "10"))
 REGISTER_IP_DAILY_LIMIT = int(os.getenv("REGISTER_IP_DAILY_LIMIT", "3"))
+LOGIN_IP_HOURLY_LIMIT = int(os.getenv("LOGIN_IP_HOURLY_LIMIT", "30"))
+LOGIN_EMAIL_HOURLY_LIMIT = int(os.getenv("LOGIN_EMAIL_HOURLY_LIMIT", "10"))
 
 class SendCodeRequest(BaseModel):
     email: str
@@ -45,6 +52,11 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     pwd_bytes = plain_password[:72].encode('utf-8')
     hash_bytes = hashed_password.encode('utf-8')
     return bcrypt.checkpw(pwd_bytes, hash_bytes)
+
+
+def _login_email_limit_key(email: str) -> str:
+    normalized = (email or "").strip().lower()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 def create_access_token(data: dict):
     to_encode = data.copy()
@@ -175,7 +187,21 @@ async def register(request: RegisterRequest, http_request: Request, db: Session 
     }
 
 @router.post("/login")
-async def login(request: LoginRequest, db: Session = Depends(get_db)):
+async def login(request: LoginRequest, http_request: Request, db: Session = Depends(get_db)):
+    client_ip = extract_client_ip(http_request)
+    try:
+        check_and_increment_ip_limit(db, client_ip, "login", LOGIN_IP_HOURLY_LIMIT, period="hour")
+        check_and_increment_subject_limit(
+            db,
+            "login_email",
+            _login_email_limit_key(request.email),
+            "login",
+            LOGIN_EMAIL_HOURLY_LIMIT,
+            period="hour",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+
     user = db.query(User).filter(User.email == request.email).first()
     if not user or not verify_password(request.password, user.hashed_password):
         raise HTTPException(status_code=400, detail="邮箱或密码错误")

@@ -1070,7 +1070,7 @@ def _create_video_generation_hold_or_raise(
     except Exception as e:
         db.rollback()
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"创建视频扣费预占失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="创建视频扣费预占失败，请稍后重试")
 
 
 def _create_generation_hold_or_raise(
@@ -1102,7 +1102,7 @@ def _create_generation_hold_or_raise(
     except Exception as e:
         db.rollback()
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"创建扣费预占失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="创建扣费预占失败，请稍后重试")
 
 
 async def _request_image_from_channels(
@@ -1262,7 +1262,7 @@ def _build_generation_error(last_error, *, prefix: str) -> HTTPException:
         return HTTPException(status_code=503, detail="生成服务暂时不可用，积分已退回，请稍后重试")
     if last_error is None:
         return HTTPException(status_code=500, detail=f"{prefix}，积分已退回")
-    return HTTPException(status_code=500, detail=f"{prefix}，积分已退回: {str(last_error)}")
+    return HTTPException(status_code=500, detail=f"{prefix}，积分已退回，请稍后重试")
 
 
 def _build_generation_success_response(
@@ -1855,7 +1855,7 @@ async def create_video_generation_task(
             error_message=str(e),
         )
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Seedance 视频任务创建失败，积分已退回: {str(e)}")
+        raise HTTPException(status_code=500, detail="Seedance 视频任务创建失败，积分已退回，请稍后重试")
 
 
 @app.get("/api/v1/video/tasks/{task_id}")
@@ -2099,7 +2099,7 @@ async def generate_image(
             error_message=str(e),
         )
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"生成失败，积分已退回: {str(e)}")
+        raise HTTPException(status_code=500, detail="生成失败，积分已退回，请稍后重试")
 
 @app.get("/")
 async def root():
@@ -2109,7 +2109,24 @@ async def root():
 async def get_channels():
     return {
         "total": len(API_CHANNELS),
-        "channels": [{"name": ch.name, "base_url": ch.base_url} for ch in API_CHANNELS]
+        "configured": bool(API_CHANNELS),
+    }
+
+
+@app.get("/api/v1/admin/channels")
+async def admin_get_channels(x_admin_token: str = Header(None)):
+    if x_admin_token != ADMIN_SECRET_KEY:
+        raise HTTPException(status_code=403, detail="无效的管理员令牌")
+    return {
+        "total": len(API_CHANNELS),
+        "channels": [
+            {
+                "name": ch.name,
+                "base_url": ch.base_url,
+                "model": ch.model,
+            }
+            for ch in API_CHANNELS
+        ],
     }
 
 @app.post("/api/generate_diagram")

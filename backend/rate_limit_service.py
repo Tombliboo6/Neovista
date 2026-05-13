@@ -175,3 +175,24 @@ def check_and_increment_user_limit(
         now=now,
         period=period,
     )
+
+
+def check_and_increment_subject_limit(
+    db: Session,
+    subject_type: str,
+    subject_key: str,
+    action: str,
+    limit: int,
+    *,
+    now: Optional[datetime] = None,
+    period: str = "day",
+) -> int:
+    return _check_and_increment(
+        db,
+        subject_type=subject_type,
+        subject_key=subject_key,
+        action=action,
+        limit=limit,
+        now=now,
+        period=period,
+    )
