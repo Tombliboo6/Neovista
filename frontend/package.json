@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@xyflow/react": "^12.11.2",
     "fabric": "^7.2.0",
     "lucide-react": "^0.577.0",
     "react": "^19.2.0",

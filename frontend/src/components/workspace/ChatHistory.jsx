@@ -53,7 +53,7 @@ function AuditCard({ data }) {
   );
 }
 
-export default function ChatHistory() {
+export default function ChatHistory({ storyMode = false }) {
   const workspaceChatMessages = useAppStore((s) => s.workspaceChatMessages);
   const clearChatHistory = useAppStore((s) => s.clearChatHistory);
   const readyToGenerate = useAppStore((s) => s.readyToGenerate);
@@ -180,8 +180,10 @@ export default function ChatHistory() {
       <div className="flex min-h-0 flex-1 flex-col" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
         <div className="flex flex-1 items-center justify-center px-5 text-center">
           <div className="max-w-[260px]">
-            <p className="mb-2 text-sm font-medium text-white/70">等待你的图面指令</p>
-            <p className="text-xs leading-5 text-white/40">选择模板、上传底图，或直接描述你想生成的分析图。</p>
+            <p className="mb-2 text-sm font-medium text-white/70">{storyMode ? '选择一个镜头继续' : '等待你的图面指令'}</p>
+            <p className="text-xs leading-5 text-white/40">
+              {storyMode ? '在分镜表补齐镜头、轴线与参考图，再编译为可检查的 Seedance 请求。' : '选择模板、上传底图，或直接描述你想生成的分析图。'}
+            </p>
           </div>
         </div>
       </div>

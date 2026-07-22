@@ -34,3 +34,20 @@ test('AgentChatInput exposes follow-model aspect ratio as the first option', () 
   assert.match(source, /const ratios = \[\s*\{ value: 'auto', label: '跟随模型' \}/);
   assert.match(source, /<option key=\{ratio\.value\} value=\{ratio\.value\}>\{ratio\.label\}<\/option>/);
 });
+
+test('AgentChatInput adapts its prompt language to narrative video work', () => {
+  assert.match(source, /useCanvasGraphStore/);
+  assert.match(source, /先在分镜表编译镜头，再检查并发送 Seedance 请求/);
+  assert.match(source, /if \(storyMode && agentMode\) setAgentMode\(false\)/);
+  assert.match(source, /!storyMode && \(/);
+  assert.match(source, /aria-label=\{inputPlaceholder\}/);
+});
+
+test('AgentChatInput blocks unavailable Seedance submissions', () => {
+  assert.match(source, /const supportsVideoCapabilities = typeof loadVideoCapabilities === 'function'/);
+  assert.match(source, /const seedanceEnabled = !supportsVideoCapabilities \|\| videoCapabilities\?\.enabled === true/);
+  assert.match(source, /if \(supportsVideoCapabilities\) void loadVideoCapabilities\(\)/);
+  assert.match(source, /const seedanceUnavailable = isSeedanceModel\(selectedModel\) && !seedanceEnabled/);
+  assert.match(source, /if \(!seedanceEnabled\)/);
+  assert.match(source, /sendButtonState\.disabled \|\| seedanceUnavailable/);
+});

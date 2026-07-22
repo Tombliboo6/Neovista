@@ -1,6 +1,7 @@
 import { Paperclip, Send, Loader2, X, Bot } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
-import { useRef } from 'react';
+import { useCanvasGraphStore } from '../../store/useCanvasGraphStore';
+import { useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { buildGenerationButtonState } from '../../lib/generationRequestState.js';
 import {
@@ -98,9 +99,13 @@ export default function AgentChatInput() {
   const setVideoResolution = useAppStore((s) => s.setVideoResolution);
   const videoFrameMode = useAppStore((s) => s.videoFrameMode);
   const setVideoFrameMode = useAppStore((s) => s.setVideoFrameMode);
+  const videoCapabilities = useAppStore((s) => s.videoCapabilities);
+  const loadVideoCapabilities = useAppStore((s) => s.loadVideoCapabilities);
   const agentMode = useAppStore((s) => s.agentMode);
   const setAgentMode = useAppStore((s) => s.setAgentMode);
   const uploadedImages = useAppStore((s) => s.uploadedImages);
+  const canvasNodes = useCanvasGraphStore((state) => state.nodes);
+  const canvasViewMode = useCanvasGraphStore((state) => state.viewMode);
   const setUploadedImages = useAppStore((s) => s.setUploadedImages);
   const removeUploadedImageAt = useAppStore((s) => s.removeUploadedImageAt);
   const fileInputRef = useRef(null);
@@ -110,6 +115,33 @@ export default function AgentChatInput() {
     isGenerationCancelable,
     hasInput: !!chatInput.trim(),
   });
+  const storyMode = canvasViewMode === 'workflow' && canvasNodes.some((node) => node.type === 'story' || node.type === 'storyboard');
+  const inputPlaceholder = storyMode
+    ? '先在分镜表编译镜头，再检查并发送 Seedance 请求'
+    : (agentMode ? '描述需要细化的图面问题、标注或空间关系' : '输入分析图生成要求');
+  const supportsVideoCapabilities = typeof loadVideoCapabilities === 'function';
+  const seedanceEnabled = !supportsVideoCapabilities || videoCapabilities?.enabled === true;
+  const seedanceMinDuration = Number(videoCapabilities?.min_duration_seconds) || 5;
+  const seedanceMaxDuration = Number(videoCapabilities?.max_duration_seconds) || 15;
+  const capabilityPricing = videoCapabilities?.resolution_credits_per_second;
+  const seedanceResolutionOptions = capabilityPricing
+    ? Object.entries(capabilityPricing).map(([value, creditsPerSecond]) => ({
+      value,
+      label: value,
+      creditsPerSecond,
+    }))
+    : SEEDANCE_RESOLUTION_OPTIONS;
+  const selectedCreditsPerSecond = capabilityPricing?.[videoResolution]
+    ?? getSeedanceCreditsPerSecond(videoResolution);
+  const seedanceUnavailable = isSeedanceModel(selectedModel) && !seedanceEnabled;
+
+  useEffect(() => {
+    if (supportsVideoCapabilities) void loadVideoCapabilities();
+  }, [loadVideoCapabilities, supportsVideoCapabilities]);
+
+  useEffect(() => {
+    if (storyMode && agentMode) setAgentMode(false);
+  }, [agentMode, setAgentMode, storyMode]);
 
   const getSelectedCanvasImageDataURL = () => {
     if (!fabricInstance) return null;
@@ -191,6 +223,10 @@ export default function AgentChatInput() {
     }
 
     if (isSeedanceModel(selectedModel)) {
+      if (!seedanceEnabled) {
+        toast.error(videoCapabilities?.disabled_reason || 'Seedance 服务当前不可用');
+        return;
+      }
       generateVideo(userInput, referenceImages);
       setChatInput('');
       return;
@@ -266,15 +302,17 @@ export default function AgentChatInput() {
   return (
     <div className="p-3" style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--surface-0)' }}>
       <div className="mb-2.5 flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-2 cursor-pointer select-none">
-          <div className="relative">
-            <input type="checkbox" checked={agentMode} onChange={(e) => setAgentMode(e.target.checked)} className="sr-only" />
-            <div className="h-4 w-8 rounded-full transition-colors duration-200" style={{ background: agentMode ? 'var(--accent-primary)' : 'rgba(255,255,255,0.16)' }} />
-            <div className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform duration-200 ${agentMode ? 'translate-x-4' : 'translate-x-0'}`} />
-          </div>
-          <Bot size={13} style={{ color: agentMode ? 'var(--accent-primary-strong)' : 'var(--text-muted)' }} />
-          <span className="text-xs text-white/50">Agent</span>
-        </label>
+        {!storyMode && (
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <div className="relative">
+              <input type="checkbox" checked={agentMode} onChange={(e) => setAgentMode(e.target.checked)} className="sr-only" />
+              <div className="h-4 w-8 rounded-full transition-colors duration-200" style={{ background: agentMode ? 'var(--accent-primary)' : 'rgba(255,255,255,0.16)' }} />
+              <div className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform duration-200 ${agentMode ? 'translate-x-4' : 'translate-x-0'}`} />
+            </div>
+            <Bot size={13} style={{ color: agentMode ? 'var(--accent-primary-strong)' : 'var(--text-muted)' }} />
+            <span className="text-xs text-white/50">Agent</span>
+          </label>
+        )}
 
         <select
           value={selectedModel}
@@ -286,7 +324,9 @@ export default function AgentChatInput() {
           <option value="nano-banana-2">Nano 2</option>
           <option value="nano-banana-pro">Nano Pro</option>
           <option value="gpt-image-2">GPT Image 2.0</option>
-          <option value="seedance-2.0">Seedance 2.0 视频</option>
+          <option value="seedance-2.0" disabled={!seedanceEnabled}>
+            {seedanceEnabled ? 'Seedance 2.0 视频' : 'Seedance 视频（暂不可用）'}
+          </option>
         </select>
 
         <select
@@ -304,8 +344,8 @@ export default function AgentChatInput() {
               <span>时长</span>
               <input
                 type="number"
-                min={5}
-                max={15}
+                min={seedanceMinDuration}
+                max={seedanceMaxDuration}
                 step={1}
                 value={videoDurationSeconds}
                 onChange={(e) => setVideoDurationSeconds(e.target.value)}
@@ -323,13 +363,13 @@ export default function AgentChatInput() {
                 className="bg-transparent text-white/70 focus:outline-none"
                 aria-label="视频清晰度"
               >
-                {SEEDANCE_RESOLUTION_OPTIONS.map((option) => (
+                {seedanceResolutionOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
                 ))}
               </select>
-              <span className="text-[11px] text-white/35">{getSeedanceCreditsPerSecond(videoResolution)}点/秒</span>
+              <span className="text-[11px] text-white/35">{selectedCreditsPerSecond}点/秒</span>
             </label>
 
             <label className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-white/60" style={{ background: 'var(--surface-2)', border: '1px solid var(--border-subtle)' }}>
@@ -348,6 +388,11 @@ export default function AgentChatInput() {
               </select>
             </label>
           </>
+        )}
+        {isSeedanceModel(selectedModel) && !seedanceEnabled && (
+          <span className="text-[11px] text-amber-300/70">
+            {videoCapabilities?.disabled_reason || '正在检查 Seedance 服务状态…'}
+          </span>
         )}
       </div>
 
@@ -379,7 +424,8 @@ export default function AgentChatInput() {
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           disabled={isLoading}
-          placeholder={agentMode ? '描述需要细化的图面问题、标注或空间关系' : '输入分析图生成要求'}
+          placeholder={inputPlaceholder}
+          aria-label={inputPlaceholder}
           className="w-full resize-none bg-transparent px-3 py-3 pr-16 text-sm leading-6 text-white/80 placeholder-white/25 focus:outline-none disabled:opacity-50"
           rows={2}
           style={{ maxHeight: '120px' }}
@@ -397,14 +443,14 @@ export default function AgentChatInput() {
           </button>
           <button
             onClick={handlePrimaryAction}
-            disabled={isWorkspaceChatLoading || sendButtonState.disabled}
+            disabled={isWorkspaceChatLoading || sendButtonState.disabled || seedanceUnavailable}
             className="rounded-lg p-1.5 transition disabled:opacity-30 active:scale-[0.96]"
             title={sendButtonState.mode === 'cancel' ? '取消生图' : '发送'}
             aria-label={sendButtonState.mode === 'cancel' ? '取消生图' : '发送'}
             style={{
               background: sendButtonState.mode === 'cancel'
                 ? 'rgba(239,68,68,0.9)'
-                : chatInput.trim() && !isLoading
+                : chatInput.trim() && !isLoading && !seedanceUnavailable
                   ? 'var(--accent-primary)'
                   : 'var(--surface-2)',
             }}

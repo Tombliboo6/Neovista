@@ -18,3 +18,10 @@ test('ChatHistory exposes a generated original image download action', () => {
   assert.match(source, /handleDownloadImage\(msg\.imageUrl\)/);
   assert.match(source, />\s*<Download size=\{12\} \/> 下载原图\s*<\/button>/);
 });
+
+test('ChatHistory adapts its empty state to narrative video work', () => {
+  assert.match(source, /ChatHistory\(\{ storyMode = false \}\)/);
+  assert.match(source, /选择一个镜头继续/);
+  assert.match(source, /补齐镜头、轴线与参考图/);
+  assert.doesNotMatch(source, /让 Agent 继续拆解剧本/);
+});
