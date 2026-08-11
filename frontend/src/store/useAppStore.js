@@ -22,19 +22,78 @@ import {
   safeCanvasToDataUrl,
 } from '../lib/canvasExport.js';
 import {
+  getImageCapabilityModel,
+  normalizeImageAspectRatio,
+  normalizeImageResolution,
+  parseImageCapabilities,
+} from '../lib/imageGenerationCapabilities.js';
+import {
+  classifyImageTask,
+  clearPendingImageSubmission,
+  createImageRequestFingerprint,
+  loadPendingImageSubmission,
+  persistPendingImageSubmission,
+} from '../lib/imageGeneration.js';
+import {
+  compareGenerationRequest,
+  createGenerationRequestDto,
+  createReferenceVideoSignature,
+  isUsableVideoCapabilities,
+} from '../lib/canvasGenerationDraft.js';
+import {
   buildVideoTaskPollingState,
+  clearActiveVideoTask,
+  clearPendingVideoSubmission,
+  fetchWithAbortTimeout,
+  findRecoverableVideoTask,
+  getVideoPollRetryDelayMs,
   getVideoUrlOrThrow,
+  isActiveVideoTaskOwnedByUser,
+  isTransientVideoPollStatus,
+  loadActiveVideoTask,
+  loadPendingVideoSubmission,
   normalizeSeedanceResolution,
   normalizeSeedanceVideoMode,
   normalizeVideoDurationSeconds,
-  resolveSeedanceVideoMode,
+  persistActiveVideoTask,
+  persistPendingVideoSubmission,
+  VIDEO_POLL_MAX_TRANSIENT_ERRORS,
+  VIDEO_POLL_RETRY_MAX_DELAY_MS,
 } from '../lib/videoGeneration.js';
+import {
+  validateSeedanceReferenceVideoDuration,
+  validateSeedanceReferenceVideoFile,
+} from '../lib/referenceVideo.js';
 
 const initialTheme = getStoredThemePreference();
 applyThemePreference(initialTheme);
 
 // API 基础路径（开发和生产都用相对路径，Vite proxy 处理）
 const API_BASE = '/api';
+
+const normalizeVideoDurationForCapabilities = (value, capabilities) => {
+  const fallback = normalizeVideoDurationSeconds(value);
+  const min = Number(capabilities?.min_duration_seconds);
+  const max = Number(capabilities?.max_duration_seconds);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min > max) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Math.min(max, Math.max(min, Number.isFinite(parsed) ? parsed : min));
+};
+
+const normalizeVideoResolutionForCapabilities = (value, capabilities) => {
+  const options = capabilities?.resolution_credits_per_second;
+  const normalized = String(value || '').trim().toLowerCase();
+  if (options && Object.prototype.hasOwnProperty.call(options, normalized)) {
+    return normalized;
+  }
+  const serverDefault = String(capabilities?.default_resolution || '').trim().toLowerCase();
+  if (options && Object.prototype.hasOwnProperty.call(options, serverDefault)) {
+    return serverDefault;
+  }
+  return normalizeSeedanceResolution(value);
+};
 
 // 规范化后端响应（过滤 JSON，只提取纯文本）
 const normalizeBackendReply = (raw) => {
@@ -121,8 +180,8 @@ const parseAgentControlPayload = (data) => {
 
   console.log('[PARSE AGENT PAYLOAD]', {
     readyToGenerate,
-    suggestedParams,
-    suggestedTemplateId,
+    hasSuggestedParams: Boolean(suggestedParams),
+    hasSuggestedTemplateId: Boolean(suggestedTemplateId),
     replyTextLength: replyText.length
   });
 
@@ -177,6 +236,13 @@ const loadFabric = () => import('fabric');
 
 const VIDEO_POLL_INTERVAL_MS = 3000;
 const VIDEO_MAX_POLL_ATTEMPTS = 600;
+const VIDEO_ABSENCE_CONFIRMATION_ATTEMPTS = 3;
+const VIDEO_ABSENCE_CONFIRMATION_DELAY_MS = 1000;
+const IMAGE_ABSENCE_CONFIRMATION_ATTEMPTS = 3;
+const IMAGE_ABSENCE_CONFIRMATION_DELAY_MS = 1000;
+const IMAGE_SUBMISSION_SAFETY_WINDOW_MS = 60000;
+let videoCapabilitiesLoadPromise = null;
+let imageCapabilitiesLoadPromise = null;
 
 const sleepWithAbort = (ms, signal) => new Promise((resolve, reject) => {
   if (signal?.aborted) {
@@ -184,12 +250,473 @@ const sleepWithAbort = (ms, signal) => new Promise((resolve, reject) => {
     return;
   }
 
-  const timeoutId = setTimeout(resolve, ms);
-  signal?.addEventListener('abort', () => {
+  const handleAbort = () => {
     clearTimeout(timeoutId);
     reject(new DOMException('Aborted', 'AbortError'));
-  }, { once: true });
+  };
+  const timeoutId = setTimeout(() => {
+    signal?.removeEventListener('abort', handleAbort);
+    resolve();
+  }, ms);
+  signal?.addEventListener('abort', handleAbort, { once: true });
+  if (signal?.aborted) {
+    handleAbort();
+  }
 });
+
+const readResponseJson = async (response) => {
+  try {
+    return await response.json();
+  } catch {
+    return {};
+  }
+};
+
+const getApiErrorMessage = (payload, fallback) => {
+  const detail = payload?.detail;
+  if (typeof detail === 'string' && detail.trim()) {
+    return detail;
+  }
+  if (detail && typeof detail === 'object') {
+    const message = detail.message || detail.detail;
+    if (typeof message === 'string' && message.trim()) {
+      return message;
+    }
+  }
+  return fallback;
+};
+
+const appendWorkspaceMessage = (set, get, message) => {
+  set({ workspaceChatMessages: [...get().workspaceChatMessages, message] });
+};
+
+const persistVideoTaskState = (set, task, expectedCurrentTaskId = null) => {
+  const persistedTask = persistActiveVideoTask(
+    task,
+    globalThis.localStorage,
+    expectedCurrentTaskId,
+  );
+  if (persistedTask) {
+    set({ activeVideoTask: persistedTask });
+  }
+  return persistedTask;
+};
+
+const clearAccountScopedGenerationState = () => ({
+  ...clearGenerationRequestState(),
+  pendingImageRequest: null,
+  isRecoveringImageRequest: false,
+  activeVideoTask: null,
+  activeVideoPollingTaskId: null,
+  isRecoveringVideoTask: false,
+  isGenerating: false,
+  workspaceChatMessages: [],
+  uploadedImages: [],
+  seedanceReferenceVideo: null,
+  isSeedanceReferenceVideoUploading: false,
+  generatedImage: null,
+  canvasDataUrl: null,
+});
+
+const isSameAuthContext = (get, { token, ownerUserId, authEpoch }) => (
+  get().token === token
+  && get().authEpoch === authEpoch
+  && String(get().user?.id ?? '') === String(ownerUserId ?? '')
+);
+
+const isValidServerVideoTask = (task) => Boolean(
+  task
+  && typeof task === 'object'
+  && String(task.task_id || '').trim()
+  && String(task.request_id || '').trim()
+);
+
+const lookupSeedanceTaskForRecovery = async ({ token, requestId, signal = null }) => {
+  const normalizedRequestId = String(requestId || '').trim();
+  if (normalizedRequestId) {
+    const requestResponse = await fetchWithAbortTimeout(
+      fetch,
+      `${API_BASE}/v1/video/tasks/by-request/${encodeURIComponent(normalizedRequestId)}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      },
+      { signal, timeoutMs: 10000 },
+    );
+    if (requestResponse.ok) {
+      const task = await readResponseJson(requestResponse);
+      return isValidServerVideoTask(task)
+        ? { task, absenceConfirmed: false }
+        : { task: null, absenceConfirmed: false };
+    }
+    if (requestResponse.status !== 404) {
+      return { task: null, absenceConfirmed: false, status: requestResponse.status };
+    }
+  }
+
+  const listResponse = await fetchWithAbortTimeout(
+    fetch,
+    `${API_BASE}/v1/video/tasks?limit=20`,
+    {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    },
+    { signal, timeoutMs: 10000 },
+  );
+  if (!listResponse.ok) {
+    return { task: null, absenceConfirmed: false, status: listResponse.status };
+  }
+  const tasks = await readResponseJson(listResponse);
+  if (!Array.isArray(tasks)) {
+    return { task: null, absenceConfirmed: false };
+  }
+  const recoverableTask = findRecoverableVideoTask(tasks, normalizedRequestId);
+  return {
+    task: recoverableTask,
+    absenceConfirmed: !recoverableTask,
+  };
+};
+
+const lookupImageTaskForRecovery = async ({ token, requestId, signal = null }) => {
+  const normalizedRequestId = String(requestId || '').trim();
+  if (!normalizedRequestId) {
+    return { task: null, absenceConfirmed: false };
+  }
+  const response = await fetchWithAbortTimeout(
+    fetch,
+    `${API_BASE}/v1/image/tasks/by-request/${encodeURIComponent(normalizedRequestId)}`,
+    {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    },
+    { signal, timeoutMs: 10000 },
+  );
+  if (response.status === 404) {
+    return { task: null, absenceConfirmed: true };
+  }
+  if (!response.ok) {
+    return { task: null, absenceConfirmed: false, status: response.status };
+  }
+  const task = await readResponseJson(response);
+  if (!task || String(task.request_id || '').trim() !== normalizedRequestId) {
+    return { task: null, absenceConfirmed: false };
+  }
+  return { task, absenceConfirmed: false };
+};
+
+const isCurrentVideoWatch = (get, controller, taskId, authContext) => (
+  get().activeGenerationController === controller
+  && get().activeVideoPollingTaskId === taskId
+  && isSameAuthContext(get, authContext)
+);
+
+const finishVideoWatch = (set, get, controller, taskId, authContext, nextState = {}) => {
+  if (!isCurrentVideoWatch(get, controller, taskId, authContext)) {
+    return;
+  }
+  set({
+    ...clearGenerationRequestState(),
+    activeVideoPollingTaskId: null,
+    isGenerating: false,
+    ...nextState,
+  });
+};
+
+const pauseVideoWatch = ({ set, get, generationRequest, task, authContext, message }) => {
+  if (!isCurrentVideoWatch(get, generationRequest.controller, task.taskId, authContext)) {
+    return;
+  }
+  const persistedTask = persistVideoTaskState(set, task, task.taskId);
+  if (!persistedTask) {
+    finishVideoWatch(set, get, generationRequest.controller, task.taskId, authContext, {
+      activeVideoTask: loadActiveVideoTask(globalThis.localStorage, authContext.ownerUserId),
+    });
+    return;
+  }
+  appendWorkspaceMessage(set, get, {
+    role: 'assistant',
+    content: message,
+  });
+  finishVideoWatch(set, get, generationRequest.controller, task.taskId, authContext);
+};
+
+const watchSeedanceVideoTask = async ({
+  set,
+  get,
+  task,
+  token,
+  ownerUserId,
+  authEpoch,
+  generationRequest,
+}) => {
+  const authContext = { token, ownerUserId, authEpoch };
+  if (!isCurrentVideoWatch(get, generationRequest.controller, task.taskId, authContext)) {
+    return;
+  }
+  let currentTask = persistVideoTaskState(set, task, task.taskId);
+  if (!currentTask) {
+    finishVideoWatch(set, get, generationRequest.controller, task.taskId, authContext, {
+      activeVideoTask: loadActiveVideoTask(globalThis.localStorage, ownerUserId),
+    });
+    return;
+  }
+  let consecutiveTransientErrors = 0;
+  let consecutiveConfirmedAbsences = 0;
+  let nextDelayMs = 0;
+
+  try {
+    for (let attempt = 0; attempt < VIDEO_MAX_POLL_ATTEMPTS; attempt += 1) {
+      if (nextDelayMs > 0) {
+        await sleepWithAbort(nextDelayMs, generationRequest.signal);
+      }
+      nextDelayMs = VIDEO_POLL_INTERVAL_MS;
+
+      let taskResponse;
+      try {
+        taskResponse = await fetchWithAbortTimeout(
+          fetch,
+          `${API_BASE}/v1/video/tasks/${encodeURIComponent(currentTask.taskId)}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          },
+          { signal: generationRequest.signal },
+        );
+      } catch (error) {
+        if (isAbortGenerationError(error)) {
+          throw error;
+        }
+
+        consecutiveTransientErrors += 1;
+        if (consecutiveTransientErrors > VIDEO_POLL_MAX_TRANSIENT_ERRORS) {
+          pauseVideoWatch({
+            set,
+            get,
+            generationRequest,
+            task: currentTask,
+            authContext,
+            message: `Seedance 任务仍在云端运行，连续查询失败后已暂停查看。任务 ID：${currentTask.taskId}。刷新页面或重新登录后会自动恢复查询。`,
+          });
+          return;
+        }
+        nextDelayMs = getVideoPollRetryDelayMs({ retryAttempt: consecutiveTransientErrors });
+        continue;
+      }
+
+      if (isTransientVideoPollStatus(taskResponse.status)) {
+        consecutiveTransientErrors += 1;
+        if (consecutiveTransientErrors > VIDEO_POLL_MAX_TRANSIENT_ERRORS) {
+          pauseVideoWatch({
+            set,
+            get,
+            generationRequest,
+            task: currentTask,
+            authContext,
+            message: `Seedance 任务仍在云端运行，上游服务暂时繁忙，已暂停查看。任务 ID：${currentTask.taskId}。刷新页面或重新登录后会自动恢复查询。`,
+          });
+          return;
+        }
+        nextDelayMs = getVideoPollRetryDelayMs({
+          retryAttempt: consecutiveTransientErrors,
+          retryAfter: taskResponse.headers.get('Retry-After'),
+        });
+        continue;
+      }
+
+      let taskData;
+      if (taskResponse.status === 404) {
+        const recovery = await lookupSeedanceTaskForRecovery({
+          token,
+          requestId: currentTask.requestId,
+          signal: generationRequest.signal,
+        });
+        if (!isCurrentVideoWatch(get, generationRequest.controller, currentTask.taskId, authContext)) {
+          return;
+        }
+        if (recovery.task?.task_id) {
+          consecutiveConfirmedAbsences = 0;
+          const recoveredTaskId = String(recovery.task.task_id);
+          const previousTaskId = currentTask.taskId;
+          const recoveredTask = persistVideoTaskState(set, {
+            ...currentTask,
+            taskId: recoveredTaskId,
+            requestId: recovery.task.request_id || currentTask.requestId,
+            lastStatus: recovery.task.status || currentTask.lastStatus,
+            lastCheckedAt: Date.now(),
+          }, previousTaskId);
+          if (!recoveredTask) {
+            finishVideoWatch(set, get, generationRequest.controller, previousTaskId, authContext, {
+              activeVideoTask: loadActiveVideoTask(globalThis.localStorage, ownerUserId),
+            });
+            return;
+          }
+          if (recoveredTaskId !== previousTaskId) {
+            clearActiveVideoTask(globalThis.localStorage, previousTaskId, ownerUserId);
+            set({ activeVideoPollingTaskId: recoveredTaskId });
+          }
+          currentTask = recoveredTask;
+          taskData = recovery.task;
+        } else if (recovery.absenceConfirmed) {
+          consecutiveConfirmedAbsences += 1;
+          if (consecutiveConfirmedAbsences < VIDEO_ABSENCE_CONFIRMATION_ATTEMPTS) {
+            nextDelayMs = VIDEO_ABSENCE_CONFIRMATION_DELAY_MS;
+            continue;
+          }
+          clearActiveVideoTask(globalThis.localStorage, currentTask.taskId, ownerUserId);
+          set({ activeVideoTask: null });
+          appendWorkspaceMessage(set, get, {
+            role: 'assistant',
+            content: `Seedance 任务已连续确认不存在，已解除本地恢复锁。任务 ID：${currentTask.taskId}。`,
+          });
+          finishVideoWatch(set, get, generationRequest.controller, currentTask.taskId, authContext);
+          return;
+        } else {
+          pauseVideoWatch({
+            set,
+            get,
+            generationRequest,
+            task: currentTask,
+            authContext,
+            message: `暂时无法确认 Seedance 任务状态，这不会取消云端生成。任务 ID：${currentTask.taskId}。刷新页面或重新登录后会自动恢复查询。`,
+          });
+          return;
+        }
+      } else {
+        taskData = await readResponseJson(taskResponse);
+      }
+      if (!isCurrentVideoWatch(get, generationRequest.controller, currentTask.taskId, authContext)) {
+        return;
+      }
+      if (!taskResponse.ok && taskResponse.status !== 404) {
+        const authHint = [401, 403].includes(taskResponse.status)
+          ? '登录状态已失效，重新登录后会自动恢复查询。'
+          : '刷新页面或重新登录后会自动恢复查询。';
+        pauseVideoWatch({
+          set,
+          get,
+          generationRequest,
+          task: currentTask,
+          authContext,
+          message: `暂时无法查询 Seedance 任务，这不会取消云端生成。任务 ID：${currentTask.taskId}。${authHint}`,
+        });
+        return;
+      }
+
+      consecutiveTransientErrors = 0;
+      consecutiveConfirmedAbsences = 0;
+      const persistedCurrentTask = persistVideoTaskState(set, {
+        ...currentTask,
+        lastStatus: taskData.status || currentTask.lastStatus,
+        lastCheckedAt: Date.now(),
+      }, currentTask.taskId);
+      if (!persistedCurrentTask) {
+        finishVideoWatch(set, get, generationRequest.controller, currentTask.taskId, authContext, {
+          activeVideoTask: loadActiveVideoTask(globalThis.localStorage, ownerUserId),
+        });
+        return;
+      }
+      currentTask = persistedCurrentTask;
+
+      const taskState = buildVideoTaskPollingState(taskData);
+      if (taskState.requiresReview) {
+        pauseVideoWatch({
+          set,
+          get,
+          generationRequest,
+          task: currentTask,
+          authContext,
+          message: taskData.error_message
+            || `Seedance 任务需要人工核对，积分仍处于预占状态。任务 ID：${currentTask.taskId}。`,
+        });
+        return;
+      }
+      if (!taskState.isTerminal) {
+        const serverRetryAfterMs = Number(taskData.retry_after_ms);
+        if (Number.isFinite(serverRetryAfterMs) && serverRetryAfterMs > 0) {
+          nextDelayMs = Math.min(
+            VIDEO_POLL_RETRY_MAX_DELAY_MS,
+            Math.max(nextDelayMs, serverRetryAfterMs),
+          );
+        }
+        continue;
+      }
+
+      const settlementStatus = String(taskData.settlement_status || '').toUpperCase();
+      const expectedSettlement = taskState.isSuccess ? 'CAPTURED' : 'REFUNDED';
+      if (settlementStatus !== expectedSettlement) {
+        pauseVideoWatch({
+          set,
+          get,
+          generationRequest,
+          task: currentTask,
+          authContext,
+          message: taskData.error_message
+            || `Seedance 任务已结束，但积分结算状态为 ${settlementStatus}，需要人工复核。任务 ID：${currentTask.taskId}。`,
+        });
+        return;
+      }
+
+      clearActiveVideoTask(globalThis.localStorage, currentTask.taskId, ownerUserId);
+      set({ activeVideoTask: null });
+      if (!taskState.isSuccess) {
+        appendWorkspaceMessage(set, get, {
+          role: 'assistant',
+          content: settlementStatus === 'REFUNDED'
+            ? 'Seedance 视频生成失败，积分已自动退回。'
+            : 'Seedance 视频生成失败，请在积分记录中确认结算状态。',
+        });
+        finishVideoWatch(set, get, generationRequest.controller, currentTask.taskId, authContext);
+        get().refreshBilling().catch(() => null);
+        return;
+      }
+
+      const videoUrl = getVideoUrlOrThrow(taskData);
+      appendWorkspaceMessage(set, get, {
+        role: 'assistant',
+        content: 'Seedance 视频已生成',
+        videoUrl,
+      });
+      finishVideoWatch(set, get, generationRequest.controller, currentTask.taskId, authContext, {
+        generatedImage: null,
+        chatInput: '',
+      });
+
+      const currentUser = get().user;
+      if (currentUser && typeof taskData.remaining_credits === 'number') {
+        get().setUser({ ...currentUser, credits: taskData.remaining_credits });
+      }
+      get().refreshBilling().catch(() => null);
+      return;
+    }
+
+    pauseVideoWatch({
+      set,
+      get,
+      generationRequest,
+      task: currentTask,
+      authContext,
+      message: `Seedance 任务仍在生成中，已暂停长时间查看。任务 ID：${currentTask.taskId}。刷新页面或重新登录后会自动恢复查询。`,
+    });
+  } catch (error) {
+    if (isAbortGenerationError(error)) {
+      return;
+    }
+
+    console.error('Failed to watch Seedance video task:', error);
+    pauseVideoWatch({
+      set,
+      get,
+      generationRequest,
+      task: currentTask,
+      authContext,
+      message: `Seedance 任务查询已暂停，但这不会取消云端生成。任务 ID：${currentTask.taskId}。刷新页面或重新登录后会自动恢复查询。`,
+    });
+  }
+};
 
 const addGeneratedImageToCanvas = async ({
   fabricInstance,
@@ -229,20 +756,61 @@ export const useAppStore = create((set, get) => ({
   user: null,
   billingSummary: null,
   token: localStorage.getItem('token') || null,
-  setUser: (user) => set({ user }),
+  authEpoch: 0,
+  setUser: (user) => {
+    const previousUserId = get().user?.id;
+    const identityChanged = String(previousUserId ?? '') !== String(user?.id ?? '');
+    if (identityChanged) {
+      get().activeGenerationController?.abort();
+      set((state) => ({
+        user,
+        authEpoch: state.authEpoch + 1,
+        ...clearAccountScopedGenerationState(),
+      }));
+    } else {
+      set({ user });
+    }
+    if (user?.id && identityChanged) {
+      queueMicrotask(() => {
+        get().recoverPendingImageRequest?.();
+        get().recoverActiveVideoTask?.();
+      });
+    }
+  },
   setToken: (token) => {
+    const tokenChanged = get().token !== token;
+    if (tokenChanged) {
+      get().activeGenerationController?.abort();
+    }
     if (token) {
       localStorage.setItem('token', token);
     } else {
       localStorage.removeItem('token');
     }
-    set({ token });
+    set((state) => ({
+      token,
+      ...(tokenChanged ? {
+        user: null,
+        billingSummary: null,
+        authEpoch: state.authEpoch + 1,
+        ...clearAccountScopedGenerationState(),
+      } : {}),
+    }));
   },
   bootstrapAuth: async () => {
-    const { token, refreshBilling } = get();
+    const { token, authEpoch, refreshBilling } = get();
+    const isCurrentBootstrap = () => (
+      get().token === token && get().authEpoch === authEpoch
+    );
 
     if (!token) {
-      set({ user: null, billingSummary: null });
+      get().activeGenerationController?.abort();
+      set((state) => ({
+        user: null,
+        billingSummary: null,
+        authEpoch: state.authEpoch + 1,
+        ...clearAccountScopedGenerationState(),
+      }));
       return;
     }
 
@@ -254,23 +822,46 @@ export const useAppStore = create((set, get) => ({
       });
       const data = await response.json();
 
-      if (!response.ok) {
-        localStorage.removeItem('token');
-        set({ user: null, token: null, billingSummary: null });
+      if (!isCurrentBootstrap()) {
         return;
       }
 
-      set({ user: data });
+      if (!response.ok) {
+        if ([401, 403].includes(response.status)) {
+          get().activeGenerationController?.abort();
+          localStorage.removeItem('token');
+          set((state) => ({
+            user: null,
+            token: null,
+            billingSummary: null,
+            authEpoch: state.authEpoch + 1,
+            ...clearAccountScopedGenerationState(),
+          }));
+        } else {
+          console.error('Failed to bootstrap auth state:', getApiErrorMessage(data, `HTTP ${response.status}`));
+        }
+        return;
+      }
+
+      get().setUser(data);
       refreshBilling().catch(() => null);
     } catch (error) {
+      if (!isCurrentBootstrap()) {
+        return;
+      }
       console.error('Failed to bootstrap auth state:', error);
-      localStorage.removeItem('token');
-      set({ user: null, token: null, billingSummary: null });
     }
   },
   logout: () => {
+    get().activeGenerationController?.abort();
     localStorage.removeItem('token');
-    set({ user: null, token: null, billingSummary: null });
+    set((state) => ({
+      user: null,
+      token: null,
+      billingSummary: null,
+      authEpoch: state.authEpoch + 1,
+      ...clearAccountScopedGenerationState(),
+    }));
   },
   ensureAuthenticatedForModelAction: (actionLabel = '当前操作') => {
     const { token, setShowAuthModal, setAuthModalContext } = get();
@@ -310,6 +901,7 @@ export const useAppStore = create((set, get) => ({
       activeTemplateName,
       homeSessionId,
       workspaceChatMessages,
+      token,
       ensureAuthenticatedForModelAction,
     } = get();
 
@@ -333,7 +925,10 @@ export const useAppStore = create((set, get) => ({
 
       const response = await fetch('/api/v1/agent/workspace-chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           messages: apiMessages,
           session_id: homeSessionId,
@@ -409,10 +1004,336 @@ export const useAppStore = create((set, get) => ({
   isGenerating: false,
   isGenerationCancelable: false,
   activeGenerationController: null,
+  pendingImageRequest: null,
+  isRecoveringImageRequest: false,
+  activeVideoTask: null,
+  activeVideoPollingTaskId: null,
+  isRecoveringVideoTask: false,
   setIsGenerating: (generating) => set({ isGenerating: generating }),
+  recoverPendingImageRequest: async ({ notify = true } = {}) => {
+    const { token, user, authEpoch, isRecoveringImageRequest } = get();
+    const pending = loadPendingImageSubmission(globalThis.localStorage, user?.id);
+    if (!token || !user?.id || !pending || isRecoveringImageRequest) {
+      return false;
+    }
+    const authContext = { token, ownerUserId: user.id, authEpoch };
+    set({ pendingImageRequest: pending, isRecoveringImageRequest: true });
+    try {
+      let task = null;
+      let absenceConfirmed = false;
+      for (let attempt = 0; attempt < IMAGE_ABSENCE_CONFIRMATION_ATTEMPTS; attempt += 1) {
+        const recovery = await lookupImageTaskForRecovery({
+          token,
+          requestId: pending.requestId,
+        });
+        if (!isSameAuthContext(get, authContext)) return false;
+        if (recovery.task) {
+          task = recovery.task;
+          absenceConfirmed = false;
+          break;
+        }
+        if (!recovery.absenceConfirmed) {
+          return false;
+        }
+        absenceConfirmed = true;
+        if (attempt + 1 < IMAGE_ABSENCE_CONFIRMATION_ATTEMPTS) {
+          await sleepWithAbort(IMAGE_ABSENCE_CONFIRMATION_DELAY_MS);
+        }
+      }
+
+      if (!isSameAuthContext(get, authContext)) return false;
+      if (!task) {
+        if (absenceConfirmed) {
+          const markerAge = Date.now() - pending.createdAt;
+          if (markerAge >= IMAGE_SUBMISSION_SAFETY_WINDOW_MS) {
+            clearPendingImageSubmission(
+              globalThis.localStorage,
+              pending.requestId,
+              user.id,
+            );
+            set({ pendingImageRequest: null });
+            if (notify) {
+              appendWorkspaceMessage(set, get, {
+                role: 'assistant',
+                content: '已连续确认上一条生图请求未在服务器创建，本地提交锁已解除，可以安全重新提交。',
+              });
+            }
+          } else if (notify) {
+            appendWorkspaceMessage(set, get, {
+              role: 'assistant',
+              content: `服务器暂未查到上一条生图请求，安全等待窗口内仍保留 request_id：${pending.requestId}，请勿改用新标识重复提交。`,
+            });
+          }
+        }
+        return false;
+      }
+
+      const taskState = classifyImageTask(task);
+      if (taskState.isSuccess) {
+        clearPendingImageSubmission(globalThis.localStorage, pending.requestId, user.id);
+        set({
+          pendingImageRequest: null,
+          generatedImage: { url: taskState.imageUrl, timestamp: task.timestamp },
+        });
+        appendWorkspaceMessage(set, get, {
+          role: 'assistant',
+          content: '已恢复上一条生图请求的结果。',
+          imageUrl: taskState.imageUrl,
+        });
+        await addGeneratedImageToCanvas({
+          fabricInstance: get().fabricInstance,
+          imageUrl: taskState.imageUrl,
+          setProgrammaticUpdate: get().setProgrammaticUpdate,
+        });
+        const currentUser = get().user;
+        if (currentUser && typeof task.remaining_credits === 'number') {
+          get().setUser({ ...currentUser, credits: task.remaining_credits });
+        }
+        get().refreshBilling().catch(() => null);
+        return true;
+      }
+
+      if (taskState.isFailed || (
+        String(task.status || '').toLowerCase() === 'succeeded'
+        && String(task.settlement_status || '').toUpperCase() === 'CAPTURED'
+      )) {
+        clearPendingImageSubmission(globalThis.localStorage, pending.requestId, user.id);
+        set({ pendingImageRequest: null });
+        if (notify) {
+          appendWorkspaceMessage(set, get, {
+            role: 'assistant',
+            content: taskState.isFailed
+              ? '上一条生图请求已明确失败，积分已退回。'
+              : (task.error_message || '上一条生图请求已完成，但图片已超过本地保留期。'),
+          });
+        }
+        get().refreshBilling().catch(() => null);
+        return true;
+      }
+
+      if (notify) {
+        appendWorkspaceMessage(set, get, {
+          role: 'assistant',
+          content: taskState.requiresReview
+            ? `上一条生图请求结果仍需人工复核，系统已保留 request_id：${pending.requestId}，不会重复提交。`
+            : `上一条生图请求仍在处理，系统已保留 request_id：${pending.requestId}，不会重复提交。`,
+        });
+      }
+      return true;
+    } catch (error) {
+      if (!isAbortGenerationError(error)) {
+        console.error('Failed to recover image generation request:', error);
+      }
+      return false;
+    } finally {
+      if (isSameAuthContext(get, authContext)) {
+        set({ isRecoveringImageRequest: false });
+      }
+    }
+  },
+  stopWatchingVideoTask: ({ notify = true } = {}) => {
+    const {
+      activeGenerationController,
+      activeVideoPollingTaskId,
+      activeVideoTask,
+    } = get();
+    if (!activeGenerationController || !activeVideoPollingTaskId) {
+      return false;
+    }
+
+    activeGenerationController.abort();
+    set({
+      ...clearGenerationRequestState(),
+      activeVideoPollingTaskId: null,
+      isGenerating: false,
+    });
+
+    if (notify) {
+      const taskId = activeVideoTask?.taskId || activeVideoPollingTaskId;
+      appendWorkspaceMessage(set, get, {
+        role: 'assistant',
+        content: `已停止查看 Seedance 任务进度，但没有取消云端生成。任务 ID：${taskId}。刷新页面或重新登录后会自动恢复查询。`,
+      });
+      toast('已停止查看，云端任务仍在运行');
+    }
+    return true;
+  },
+  resumeActiveVideoTask: () => {
+    const {
+      token,
+      user,
+      authEpoch,
+      activeGenerationController,
+      activeVideoPollingTaskId,
+    } = get();
+    const storedTask = loadActiveVideoTask(globalThis.localStorage, user?.id);
+    if (!token || !user || !storedTask || !isActiveVideoTaskOwnedByUser(storedTask, user)) {
+      return false;
+    }
+    if (activeGenerationController || activeVideoPollingTaskId === storedTask.taskId) {
+      return false;
+    }
+
+    const reboundTask = persistActiveVideoTask({
+      ...storedTask,
+      ownerUserId: storedTask.ownerUserId || user.id,
+    }, globalThis.localStorage, storedTask.taskId);
+    if (!reboundTask) {
+      set({ activeVideoTask: loadActiveVideoTask(globalThis.localStorage, user.id) });
+      return false;
+    }
+    const generationRequest = createGenerationRequestState();
+    set({
+      activeVideoTask: reboundTask,
+      activeVideoPollingTaskId: reboundTask.taskId,
+      isGenerating: true,
+      ...generationRequest.nextState,
+      workspaceChatMessages: [...get().workspaceChatMessages, {
+        role: 'assistant',
+        content: `正在恢复查询 Seedance 任务进度… 任务 ID：${reboundTask.taskId}`,
+      }],
+    });
+    void watchSeedanceVideoTask({
+      set,
+      get,
+      task: reboundTask,
+      token,
+      ownerUserId: user.id,
+      authEpoch,
+      generationRequest,
+    });
+    return true;
+  },
+  recoverActiveVideoTask: async ({ requestId = null } = {}) => {
+    const {
+      token,
+      user,
+      authEpoch,
+      activeGenerationController,
+      activeVideoPollingTaskId,
+      isRecoveringVideoTask,
+    } = get();
+    if (!token || !user || activeGenerationController || activeVideoPollingTaskId || isRecoveringVideoTask) {
+      return false;
+    }
+
+    const authContext = { token, ownerUserId: user.id, authEpoch };
+    const pendingSubmission = loadPendingVideoSubmission(globalThis.localStorage, user.id);
+    const preferredRequestId = String(
+      requestId || pendingSubmission?.requestId || '',
+    ).trim();
+    if (!preferredRequestId && get().resumeActiveVideoTask()) {
+      return true;
+    }
+
+    set({ isRecoveringVideoTask: true });
+    try {
+      const confirmationAttempts = preferredRequestId
+        ? VIDEO_ABSENCE_CONFIRMATION_ATTEMPTS
+        : 1;
+      let recoverableTask = null;
+      let absenceConfirmed = false;
+      for (let attempt = 0; attempt < confirmationAttempts; attempt += 1) {
+        const recovery = await lookupSeedanceTaskForRecovery({
+          token,
+          requestId: preferredRequestId,
+        });
+        if (!isSameAuthContext(get, authContext)) {
+          return false;
+        }
+        if (recovery.task) {
+          recoverableTask = recovery.task;
+          absenceConfirmed = false;
+          break;
+        }
+        if (!recovery.absenceConfirmed) {
+          return get().resumeActiveVideoTask();
+        }
+        absenceConfirmed = true;
+        if (attempt + 1 < confirmationAttempts) {
+          await sleepWithAbort(VIDEO_ABSENCE_CONFIRMATION_DELAY_MS);
+        }
+      }
+
+      if (!isSameAuthContext(get, authContext)) {
+        return false;
+      }
+      if (!recoverableTask) {
+        if (preferredRequestId && absenceConfirmed) {
+          clearPendingVideoSubmission(globalThis.localStorage, preferredRequestId, user.id);
+          const storedTask = loadActiveVideoTask(globalThis.localStorage, user.id);
+          if (storedTask?.requestId === preferredRequestId) {
+            clearActiveVideoTask(globalThis.localStorage, storedTask.taskId, user.id);
+            set({ activeVideoTask: null });
+          }
+          appendWorkspaceMessage(set, get, {
+            role: 'assistant',
+            content: '已连续确认该 Seedance 请求未创建云端任务，本地提交锁已解除，可以安全重试。',
+          });
+        }
+        return get().resumeActiveVideoTask();
+      }
+
+      const currentStoredTask = loadActiveVideoTask(globalThis.localStorage, user.id);
+      const recoveredTaskId = String(recoverableTask.task_id || '');
+      const recoveredRequestId = String(recoverableTask.request_id || '');
+      if (
+        currentStoredTask
+        && (
+          currentStoredTask.taskId !== recoveredTaskId
+          || currentStoredTask.requestId !== recoveredRequestId
+        )
+      ) {
+        const currentMarkerWasConfirmedAbsent = Boolean(
+          preferredRequestId
+          && currentStoredTask.requestId === preferredRequestId
+          && recoveredRequestId !== preferredRequestId
+        );
+        if (currentMarkerWasConfirmedAbsent) {
+          clearActiveVideoTask(
+            globalThis.localStorage,
+            currentStoredTask.taskId,
+            user.id,
+          );
+        } else {
+          set({ activeVideoTask: currentStoredTask });
+          return get().resumeActiveVideoTask();
+        }
+      }
+      const persistedTask = persistActiveVideoTask({
+        taskId: recoveredTaskId,
+        requestId: recoveredRequestId,
+        ownerUserId: user.id,
+        createdAt: Date.now(),
+        lastCheckedAt: Date.now(),
+        lastStatus: recoverableTask.status,
+      }, globalThis.localStorage);
+      if (!persistedTask) {
+        set({ activeVideoTask: loadActiveVideoTask(globalThis.localStorage, user.id) });
+        return get().resumeActiveVideoTask();
+      }
+      if (preferredRequestId) {
+        clearPendingVideoSubmission(globalThis.localStorage, preferredRequestId, user.id);
+      }
+      set({ activeVideoTask: persistedTask });
+      return get().resumeActiveVideoTask();
+    } catch (error) {
+      if (!isAbortGenerationError(error)) {
+        console.error('Failed to recover Seedance video task:', error);
+      }
+      return false;
+    } finally {
+      if (isSameAuthContext(get, authContext)) {
+        set({ isRecoveringVideoTask: false });
+      }
+    }
+  },
   cancelActiveGeneration: () => {
-    const { activeGenerationController } = get();
+    const { activeGenerationController, activeVideoPollingTaskId } = get();
     if (!activeGenerationController) return false;
+    if (activeVideoPollingTaskId) {
+      return get().stopWatchingVideoTask();
+    }
 
     set({
       ...cancelGenerationRequestState(activeGenerationController),
@@ -444,12 +1365,19 @@ export const useAppStore = create((set, get) => ({
   agentMode: false,            // Agent 对话模式
   uploadedImages: [],          // 用户上传的参考底图
   assetUsageConfirmed: false,  // 素材使用权确认
-  resolution: '2K',            // 生图分辨率
+  resolution: '1K',            // 生图分辨率 / 质量档位（以后端能力为准）
   aspectRatio: 'auto',         // 生图比例
   numImages: 1,                // 生图数量（默认 1 张）
+  imageCapabilities: null,
+  isImageCapabilitiesLoading: false,
   videoDurationSeconds: 5,     // Seedance 视频时长
   videoResolution: '720p',     // Seedance 视频清晰度
   videoFrameMode: 'auto',      // Seedance 视频输入模式
+  videoGenerateAudio: true,    // Seedance 是否生成同步音效
+  seedanceReferenceVideo: null,
+  isSeedanceReferenceVideoUploading: false,
+  videoCapabilities: null,
+  isVideoCapabilitiesLoading: false,
   selectedModel: '',           // 生图模型（默认未选择）
   theme: initialTheme,
   setAgentMode: (mode) => set({ agentMode: mode }),
@@ -458,13 +1386,222 @@ export const useAppStore = create((set, get) => ({
   removeUploadedImageAt: (index) => set((state) => ({
     uploadedImages: state.uploadedImages.filter((_, currentIndex) => currentIndex !== index),
   })),
-  setResolution: (res) => set({ resolution: res }),
+  setResolution: (res) => set((state) => ({
+    resolution: normalizeImageResolution(
+      state.imageCapabilities,
+      state.selectedModel,
+      res,
+    ) || state.resolution,
+  })),
   setAspectRatio: (ratio) => set({ aspectRatio: ratio }),
-  setNumImages: (num) => set({ numImages: num }),
-  setVideoDurationSeconds: (duration) => set({ videoDurationSeconds: normalizeVideoDurationSeconds(duration) }),
-  setVideoResolution: (resolution) => set({ videoResolution: normalizeSeedanceResolution(resolution) }),
-  setVideoFrameMode: (mode) => set({ videoFrameMode: normalizeSeedanceVideoMode(mode) }),
-  setSelectedModel: (model) => set({ selectedModel: model }),
+  setNumImages: () => set({ numImages: 1 }),
+  setVideoDurationSeconds: (duration) => set({
+    videoDurationSeconds: normalizeVideoDurationForCapabilities(duration, get().videoCapabilities),
+  }),
+  setVideoResolution: (resolution) => set({
+    videoResolution: normalizeVideoResolutionForCapabilities(resolution, get().videoCapabilities),
+  }),
+  setVideoFrameMode: (mode) => set((state) => {
+    const videoFrameMode = normalizeSeedanceVideoMode(mode);
+    return {
+      videoFrameMode,
+      seedanceReferenceVideo: videoFrameMode === 'reference_video'
+        ? state.seedanceReferenceVideo
+        : null,
+    };
+  }),
+  setVideoGenerateAudio: (enabled) => set({ videoGenerateAudio: Boolean(enabled) }),
+  clearSeedanceReferenceVideo: () => set((state) => ({
+    seedanceReferenceVideo: null,
+    videoFrameMode: state.videoFrameMode === 'reference_video' ? 'auto' : state.videoFrameMode,
+  })),
+  uploadSeedanceReferenceVideo: async (file, durationSeconds) => {
+    const {
+      token,
+      user,
+      authEpoch,
+      ensureAuthenticatedForModelAction,
+    } = get();
+    if (!ensureAuthenticatedForModelAction('上传参考视频')) {
+      return null;
+    }
+
+    validateSeedanceReferenceVideoFile(file);
+    const duration = validateSeedanceReferenceVideoDuration(durationSeconds);
+    const authContext = { token, ownerUserId: user?.id, authEpoch };
+    const formData = new FormData();
+    formData.append('file', file);
+    set({ isSeedanceReferenceVideoUploading: true });
+
+    try {
+      const capabilities = await get().loadVideoCapabilities();
+      if (!isSameAuthContext(get, authContext)) return null;
+      if (capabilities?.supports_reference_video !== true) {
+        throw new Error('Seedance 参考视频服务当前不可用');
+      }
+
+      const response = await fetch(`${API_BASE}/v1/video/reference-upload`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+      const data = await readResponseJson(response);
+      if (!isSameAuthContext(get, authContext)) return null;
+      if (!response.ok) {
+        throw new Error(getApiErrorMessage(data, '参考视频上传失败'));
+      }
+      if (typeof data?.video_url !== 'string' || !data.video_url.trim()) {
+        throw new Error('参考视频上传成功，但未返回视频地址');
+      }
+
+      const referenceVideo = {
+        ...data,
+        duration_seconds: duration,
+      };
+      set({
+        seedanceReferenceVideo: referenceVideo,
+        videoFrameMode: 'reference_video',
+      });
+      return referenceVideo;
+    } finally {
+      set({ isSeedanceReferenceVideoUploading: false });
+    }
+  },
+  setSelectedModel: (model) => set((state) => {
+    const normalized = String(model || '').trim();
+    if (!normalized || normalized === 'seedance-2.0') {
+      return { selectedModel: normalized, numImages: 1 };
+    }
+    const capabilityModel = getImageCapabilityModel(state.imageCapabilities, normalized);
+    if (!capabilityModel) {
+      return { selectedModel: '', numImages: 1 };
+    }
+    return {
+      selectedModel: capabilityModel.id,
+      resolution: normalizeImageResolution(
+        state.imageCapabilities,
+        capabilityModel.id,
+        state.resolution,
+      ),
+      aspectRatio: normalizeImageAspectRatio(
+        state.imageCapabilities,
+        capabilityModel.id,
+        state.aspectRatio,
+      ) || state.aspectRatio,
+      numImages: 1,
+    };
+  }),
+  loadImageCapabilities: async () => {
+    if (imageCapabilitiesLoadPromise) return imageCapabilitiesLoadPromise;
+    set({ isImageCapabilitiesLoading: true });
+    let requestPromise;
+    requestPromise = (async () => {
+      try {
+        const response = await fetchWithAbortTimeout(
+          fetch,
+          `${API_BASE}/v1/image/capabilities`,
+          {},
+          { timeoutMs: 10000 },
+        );
+        const data = await readResponseJson(response);
+        if (!response.ok) {
+          throw new Error(getApiErrorMessage(data, '生图能力请求失败'));
+        }
+        const parsed = parseImageCapabilities(data);
+        set((state) => {
+          const selectedImageModel = getImageCapabilityModel(parsed, state.selectedModel);
+          const selectedModel = state.selectedModel === 'seedance-2.0'
+            ? state.selectedModel
+            : (selectedImageModel?.id || '');
+          return {
+            imageCapabilities: parsed,
+            selectedModel,
+            resolution: selectedImageModel
+              ? normalizeImageResolution(parsed, selectedImageModel.id, state.resolution)
+              : state.resolution,
+            numImages: 1,
+          };
+        });
+        return parsed;
+      } catch (error) {
+        console.error('Failed to load image capabilities:', error);
+        const unavailable = Object.freeze({
+          enabled: false,
+          disabledReason: '生图服务状态暂不可用',
+          defaultModel: null,
+          maxNumImages: 1,
+          models: Object.freeze([]),
+        });
+        set((state) => ({
+          imageCapabilities: unavailable,
+          selectedModel: state.selectedModel === 'seedance-2.0' ? state.selectedModel : '',
+          numImages: 1,
+        }));
+        return unavailable;
+      } finally {
+        if (imageCapabilitiesLoadPromise === requestPromise) {
+          imageCapabilitiesLoadPromise = null;
+          set({ isImageCapabilitiesLoading: false });
+        }
+      }
+    })();
+    imageCapabilitiesLoadPromise = requestPromise;
+    return requestPromise;
+  },
+  loadVideoCapabilities: async () => {
+    if (videoCapabilitiesLoadPromise) {
+      return videoCapabilitiesLoadPromise;
+    }
+    set({ isVideoCapabilitiesLoading: true });
+    let requestPromise;
+    requestPromise = (async () => {
+      try {
+        const response = await fetchWithAbortTimeout(
+          fetch,
+          `${API_BASE}/v1/video/capabilities`,
+          {},
+          { timeoutMs: 10000 },
+        );
+        const data = await readResponseJson(response);
+        if (
+          !response.ok
+          || typeof data?.enabled !== 'boolean'
+          || (data.enabled === true && !isUsableVideoCapabilities(data))
+        ) {
+          throw new Error(getApiErrorMessage(data, 'Seedance capability request failed'));
+        }
+        set((state) => ({
+          videoCapabilities: data,
+          videoDurationSeconds: normalizeVideoDurationForCapabilities(
+            state.videoDurationSeconds,
+            data,
+          ),
+          videoResolution: normalizeVideoResolutionForCapabilities(
+            state.videoResolution,
+            data,
+          ),
+        }));
+        return data;
+      } catch (error) {
+        console.error('Failed to load Seedance capabilities:', error);
+        const unavailable = {
+          enabled: false,
+          disabled_reason: 'Seedance 服务状态暂不可用',
+        };
+        set({ videoCapabilities: unavailable });
+        return unavailable;
+      } finally {
+        if (videoCapabilitiesLoadPromise === requestPromise) {
+          videoCapabilitiesLoadPromise = null;
+          set({ isVideoCapabilitiesLoading: false });
+        }
+      }
+    })();
+    videoCapabilitiesLoadPromise = requestPromise;
+    return requestPromise;
+  },
   setTheme: (theme) => {
     const nextTheme = persistThemePreference(theme);
     applyThemePreference(nextTheme);
@@ -472,11 +1609,12 @@ export const useAppStore = create((set, get) => ({
   },
 
   refreshBilling: async () => {
-    const { token, user } = get();
-    if (!token) {
+    const { token, user, authEpoch } = get();
+    if (!token || !user?.id) {
       set({ billingSummary: null });
       return null;
     }
+    const authContext = { token, ownerUserId: user.id, authEpoch };
 
     const response = await fetch(`${API_BASE}/v1/billing/me`, {
       headers: {
@@ -485,14 +1623,26 @@ export const useAppStore = create((set, get) => ({
     });
 
     const data = await response.json();
+    if (!isSameAuthContext(get, authContext)) {
+      return null;
+    }
     if (!response.ok) {
-      throw new Error(data.detail || '刷新账单信息失败');
+      throw new Error(getApiErrorMessage(data, '刷新账单信息失败'));
     }
 
-    set((state) => ({
-      billingSummary: data,
-      user: user && state.user ? { ...state.user, credits: data.credits } : state.user,
-    }));
+    set((state) => {
+      if (
+        state.token !== token
+        || state.authEpoch !== authEpoch
+        || String(state.user?.id ?? '') !== String(user.id)
+      ) {
+        return {};
+      }
+      return {
+        billingSummary: data,
+        user: { ...state.user, credits: data.credits },
+      };
+    });
 
     return data;
   },
@@ -558,12 +1708,19 @@ export const useAppStore = create((set, get) => ({
 
   initWorkspaceWithMessage: async (initMessage, sessionId) => {
     // 从首页跳转，调用 Agent 1
+    const { token, ensureAuthenticatedForModelAction } = get();
+    if (!ensureAuthenticatedForModelAction('初始化工作区对话')) {
+      return;
+    }
     set({ homeSessionId: sessionId, isWorkspaceChatLoading: true });
 
     try {
       const response = await fetch(`${API_BASE}/v1/agent/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ query: initMessage, session_id: sessionId }),
       });
 
@@ -585,7 +1742,7 @@ export const useAppStore = create((set, get) => ({
   },
 
   directChat: async (message, imageDatas) => {
-    const { workspaceChatMessages, ensureAuthenticatedForModelAction } = get();
+    const { workspaceChatMessages, token, ensureAuthenticatedForModelAction } = get();
     if (!ensureAuthenticatedForModelAction('继续对话')) {
       return;
     }
@@ -599,7 +1756,10 @@ export const useAppStore = create((set, get) => ({
       const apiMessages = prepareMessagesForAPI(updated, 10, 4000);
       const response = await fetch('/api/v1/direct-chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           message,
           messages: apiMessages,
@@ -641,6 +1801,7 @@ export const useAppStore = create((set, get) => ({
       workspaceChatMessages,
       addChatMessage,
       agentMode,
+      token,
       ensureAuthenticatedForModelAction,
     } = get();
     if (!ensureAuthenticatedForModelAction('继续 Agent 对话')) {
@@ -660,7 +1821,10 @@ export const useAppStore = create((set, get) => ({
 
       const response = await fetch(`${API_BASE}/v1/agent/workspace-chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           messages: apiMessages,
           image_data: normalizedImages[0] || null,
@@ -706,7 +1870,6 @@ export const useAppStore = create((set, get) => ({
       addChatMessage,
       fabricInstance,
       setProgrammaticUpdate,
-      numImages,
       activeSkill,
       resolution,
       aspectRatio,
@@ -724,6 +1887,24 @@ export const useAppStore = create((set, get) => ({
     }
 
     if (!ensureAuthenticatedForModelAction('生成图片')) {
+      return;
+    }
+    if (!user?.id) {
+      addChatMessage('assistant', '登录状态仍在同步，请稍后再提交生图请求。');
+      return;
+    }
+
+    const imageCapabilities = await get().loadImageCapabilities();
+    const currentModel = get().selectedModel || selectedModel;
+    const capabilityModel = getImageCapabilityModel(imageCapabilities, currentModel);
+    if (!imageCapabilities?.enabled || !capabilityModel) {
+      addChatMessage('assistant', imageCapabilities?.disabledReason || '生图服务能力未加载，已阻止提交');
+      return;
+    }
+    const requestResolution = normalizeImageResolution(imageCapabilities, currentModel, resolution);
+    const requestAspectRatio = normalizeImageAspectRatio(imageCapabilities, currentModel, aspectRatio);
+    if (!requestResolution || !requestAspectRatio) {
+      addChatMessage('assistant', '当前模型参数未通过能力校验，已阻止提交');
       return;
     }
 
@@ -795,6 +1976,48 @@ export const useAppStore = create((set, get) => ({
       const baseImages = uploadedImages.length > 0
         ? uploadedImages
         : normalizeReferenceImages(base_image);
+      if (baseImages.length > 0 && !capabilityModel.supportsReferenceImages) {
+        addChatMessage('assistant', '当前模型不支持参考图，已阻止提交');
+        set({ ...clearRequestState, isGenerating: false });
+        return;
+      }
+
+      const requestPayload = {
+        session_id: homeSessionId,
+        base_image: baseImages[0] || null,
+        base_images: baseImages.length > 0 ? baseImages : null,
+        num_images: 1,
+        template_id: activeSkill || suggestedTemplateId,
+        resolution: requestResolution,
+        aspect_ratio: requestAspectRatio,
+        selected_model: currentModel,
+      };
+      const endpoint = '/generate_diagram';
+      const requestFingerprint = createImageRequestFingerprint(endpoint, requestPayload);
+      const storedPending = loadPendingImageSubmission(globalThis.localStorage, user.id);
+      if (storedPending && (
+        storedPending.endpoint !== endpoint
+        || storedPending.requestFingerprint !== requestFingerprint
+      )) {
+        addChatMessage('assistant', '已有生图请求尚未确认结束，正在恢复上一条请求。为避免重复扣费，暂不提交新请求。');
+        set({ ...clearRequestState, isGenerating: false, pendingImageRequest: storedPending });
+        void get().recoverPendingImageRequest();
+        return;
+      }
+      const requestId = storedPending?.requestId || createClientRequestId();
+      const pendingMarker = persistPendingImageSubmission({
+        requestId,
+        ownerUserId: user.id,
+        endpoint,
+        requestFingerprint,
+        createdAt: storedPending?.createdAt || Date.now(),
+      });
+      if (!pendingMarker) {
+        addChatMessage('assistant', '无法安全保存生图请求标识，已阻止提交，请刷新后重试。');
+        set({ ...clearRequestState, isGenerating: false });
+        return;
+      }
+      set({ pendingImageRequest: pendingMarker });
 
       const response = await fetch(`${API_BASE}/generate_diagram`, {
         method: 'POST',
@@ -804,15 +2027,8 @@ export const useAppStore = create((set, get) => ({
         },
         signal: generationRequest.signal,
         body: JSON.stringify({
-          request_id: createClientRequestId(),
-          session_id: homeSessionId,
-          base_image: baseImages[0] || null,
-          base_images: baseImages.length > 0 ? baseImages : null,
-          num_images: numImages,
-          template_id: activeSkill || suggestedTemplateId,
-          resolution: resolution,
-          aspect_ratio: aspectRatio,
-          selected_model: selectedModel || 'nano-banana-2',
+          request_id: requestId,
+          ...requestPayload,
         }),
       });
 
@@ -822,11 +2038,18 @@ export const useAppStore = create((set, get) => ({
       if (!response.ok) {
         const errorMsg = data.detail || '生成失败';
         addChatMessage('assistant', `生成失败: ${errorMsg}`);
+        if ([400, 401, 402, 403, 404, 422, 429].includes(response.status)) {
+          clearPendingImageSubmission(globalThis.localStorage, requestId, user.id);
+          set({ pendingImageRequest: null });
+        } else {
+          void get().recoverPendingImageRequest();
+        }
         set({ ...clearRequestState, isGenerating: false });
         return;
       }
 
       const imageUrl = getGeneratedImageUrlOrThrow(data);
+      clearPendingImageSubmission(globalThis.localStorage, requestId, user.id);
       console.log('生图返回数据:', {
         ...data,
         image_url: summarizeGeneratedImageUrl(imageUrl),
@@ -839,7 +2062,10 @@ export const useAppStore = create((set, get) => ({
         imageUrl,
         templateName: (activeSkill || suggestedTemplateId) ? activeTemplateName : null,
       });
-      console.log('准备添加的消息:', newMessage);
+      console.log('准备添加生图消息:', {
+        hasImage: Boolean(newMessage.imageUrl),
+        hasTemplate: Boolean(newMessage.templateName),
+      });
 
       set({
         workspaceChatMessages: [...workspaceChatMessages, newMessage]
@@ -854,6 +2080,7 @@ export const useAppStore = create((set, get) => ({
 
       set({
         ...clearRequestState,
+        pendingImageRequest: null,
         generatedImage: { url: imageUrl, timestamp: data.timestamp },
         isGenerating: false,
         readyToGenerate: false,
@@ -869,16 +2096,18 @@ export const useAppStore = create((set, get) => ({
 
     } catch (error) {
       if (isAbortGenerationError(error)) {
-        get().addSystemMessage('已取消本次生图请求');
-        toast('已取消本次生图请求');
+        get().addSystemMessage('已停止等待生图响应；这不代表云端生成已取消，系统会按原 request_id 恢复结果');
+        toast('已停止等待，不代表云端生图已取消');
         set({ ...clearRequestState, isGenerating: false });
+        void get().recoverPendingImageRequest();
         return;
       }
 
       console.error('生图失败:', error);
       toast.error(`生图异常: ${error.message || '网络错误'}`);
-      addChatMessage('assistant', `生图失败: ${error.message || '网络错误'}`);
+      addChatMessage('assistant', '暂时无法确认生图结果。系统已保留 request_id，将继续恢复，请勿立即重复提交。');
       set({ ...clearRequestState, isGenerating: false });
+      void get().recoverPendingImageRequest();
     }
   },
 
@@ -898,7 +2127,7 @@ export const useAppStore = create((set, get) => ({
 
   auditDiagram: async (imageUrl) => {
     console.log('🔍 审图函数被调用');
-    console.log('imageUrl:', imageUrl);
+    console.log('imageUrl:', summarizeGeneratedImageUrl(imageUrl));
 
     const { token, addChatMessage, ensureAuthenticatedForModelAction } = get();
 
@@ -931,7 +2160,11 @@ export const useAppStore = create((set, get) => ({
 
       const data = await response.json();
 
-      console.log('审图返回数据:', data);
+      console.log('审图请求完成:', {
+        ok: response.ok,
+        status: response.status,
+        passed: response.ok ? Boolean(data.is_pass) : null,
+      });
 
       if (response.ok) {
         let message = '审图报告\n\n';
@@ -1209,52 +2442,10 @@ export const useAppStore = create((set, get) => ({
     if (!ensureAuthenticatedForModelAction('批量生成图片')) {
       return;
     }
-
-    addChatMessage('user', `批量生成 ${count} 个方案`);
-
-    const generationRequest = createGenerationRequestState();
-    const clearRequestState = clearGenerationRequestState();
-
-    set({
-      isGenerating: true,
-      ...generationRequest.nextState,
-    });
-
-    try {
-      const canvasDataUrl = get().canvasDataUrl;
-      const results = [];
-
-      for (let i = 0; i < count; i++) {
-        const response = await fetch(`${API_BASE}/v1/generate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            template_id: activeSkill,
-            user_params: userParams ? `${userParams} (方案 ${i + 1})` : `方案 ${i + 1}`,
-            image_data: canvasDataUrl,
-            image_datas: normalizeReferenceImages(canvasDataUrl),
-          }),
-        });
-
-        const data = await response.json();
-        results.push(data.image_url);
-      }
-
-      addChatMessage('assistant', `已生成 ${count} 个方案`, results[0]);
-
-      set({
-        generatedImage: { url: results[0], timestamp: Date.now() },
-        batchResults: results,
-        isGenerating: false,
-        ...clearRequestState,
-        chatInput: '',
-        canvasDataUrl: null,
-      });
-    } catch (error) {
-      console.error('Batch generation failed:', error);
-      addChatMessage('assistant', '批量生成失败');
-      set({ isGenerating: false, ...clearRequestState });
+    if (Number(count) > 1) {
+      addChatMessage('assistant', '为避免多扣积分，当前版本已停用批量生图，本次只提交 1 张。');
     }
+    return get().generateImage(userParams, activeSkill, null, null);
   },
 
   batchResults: [],
@@ -1270,7 +2461,6 @@ export const useAppStore = create((set, get) => ({
       resolution,
       aspectRatio,
       setProgrammaticUpdate,
-      numImages,
       selectedModel,
       refreshBilling,
       ensureAuthenticatedForModelAction,
@@ -1280,6 +2470,28 @@ export const useAppStore = create((set, get) => ({
     const finalTemplateId = templateId || activeSkill;
 
     if (!ensureAuthenticatedForModelAction('生成图片')) {
+      return;
+    }
+    if (!user?.id) {
+      addChatMessage('assistant', '登录状态仍在同步，请稍后再提交生图请求。');
+      return;
+    }
+
+    const imageCapabilities = await get().loadImageCapabilities();
+    const currentModel = get().selectedModel || selectedModel;
+    const capabilityModel = getImageCapabilityModel(imageCapabilities, currentModel);
+    const requestResolution = normalizeImageResolution(
+      imageCapabilities,
+      currentModel,
+      get().resolution || resolution,
+    );
+    const requestAspectRatio = normalizeImageAspectRatio(
+      imageCapabilities,
+      currentModel,
+      get().aspectRatio || aspectRatio,
+    );
+    if (!imageCapabilities?.enabled || !capabilityModel || !requestResolution || !requestAspectRatio) {
+      addChatMessage('assistant', imageCapabilities?.disabledReason || '生图模型与价格能力未加载，已阻止提交');
       return;
     }
 
@@ -1318,27 +2530,62 @@ export const useAppStore = create((set, get) => ({
         }
         return normalizeReferenceImages(canvasDataUrl);
       })();
+      if (finalImageList.length > 0 && !capabilityModel.supportsReferenceImages) {
+        addChatMessage('assistant', '当前模型不支持参考图，已阻止提交');
+        set({ ...clearRequestState, isGenerating: false });
+        return;
+      }
 
       const headers = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       };
 
+      const requestPayload = {
+        template_id: finalTemplateId || null,
+        user_params: userParams,
+        image_data: finalImageList[0] || null,
+        image_datas: finalImageList.length > 0 ? finalImageList : null,
+        custom_prompt_structure: customPromptStructure,
+        resolution: requestResolution,
+        aspect_ratio: requestAspectRatio,
+        num_images: 1,
+        selected_model: currentModel,
+      };
+      const endpoint = '/v1/generate';
+      const requestFingerprint = createImageRequestFingerprint(endpoint, requestPayload);
+      const storedPending = loadPendingImageSubmission(globalThis.localStorage, user.id);
+      if (storedPending && (
+        storedPending.endpoint !== endpoint
+        || storedPending.requestFingerprint !== requestFingerprint
+      )) {
+        addChatMessage('assistant', '已有生图请求尚未确认结束，正在恢复上一条请求。为避免重复扣费，暂不提交新请求。');
+        set({ ...clearRequestState, isGenerating: false, pendingImageRequest: storedPending });
+        void get().recoverPendingImageRequest();
+        return;
+      }
+      const requestId = storedPending?.requestId || createClientRequestId();
+      const pendingMarker = persistPendingImageSubmission({
+        requestId,
+        ownerUserId: user.id,
+        endpoint,
+        requestFingerprint,
+        createdAt: storedPending?.createdAt || Date.now(),
+      });
+      if (!pendingMarker) {
+        addChatMessage('assistant', '无法安全保存生图请求标识，已阻止提交，请刷新后重试。');
+        set({ ...clearRequestState, isGenerating: false });
+        return;
+      }
+      set({ pendingImageRequest: pendingMarker });
+
       const response = await fetch(`${API_BASE}/v1/generate`, {
         method: 'POST',
         headers,
         signal: generationRequest.signal,
         body: JSON.stringify({
-          request_id: createClientRequestId(),
-          template_id: finalTemplateId || null,
-          user_params: userParams,
-          image_data: finalImageList[0] || null,
-          image_datas: finalImageList.length > 0 ? finalImageList : null,
-          custom_prompt_structure: customPromptStructure,
-          resolution: resolution,
-          aspect_ratio: aspectRatio,
-          num_images: numImages,
-          selected_model: selectedModel || 'nano-banana-2',
+          request_id: requestId,
+          ...requestPayload,
         }),
       });
 
@@ -1353,11 +2600,18 @@ export const useAppStore = create((set, get) => ({
         } else {
           addChatMessage('assistant', data.detail || '生成失败，请重试');
         }
+        if ([400, 401, 402, 403, 404, 422, 429].includes(response.status)) {
+          clearPendingImageSubmission(globalThis.localStorage, requestId, user.id);
+          set({ pendingImageRequest: null });
+        } else {
+          void get().recoverPendingImageRequest();
+        }
         set({ ...clearRequestState, isGenerating: false });
         return;
       }
 
       const imageUrl = getGeneratedImageUrlOrThrow(data);
+      clearPendingImageSubmission(globalThis.localStorage, requestId, user.id);
       addChatMessage('assistant', '已生成图片', imageUrl);
 
       // 同时添加到 workspaceChatMessages（用于显示审图按钮和模板溯源）
@@ -1386,6 +2640,7 @@ export const useAppStore = create((set, get) => ({
 
       set({
         ...clearRequestState,
+        pendingImageRequest: null,
         generatedImage: {
           url: imageUrl,
           timestamp: data.timestamp,
@@ -1400,30 +2655,32 @@ export const useAppStore = create((set, get) => ({
       });
     } catch (error) {
       if (isAbortGenerationError(error)) {
-        get().addSystemMessage('已取消本次生图请求');
-        toast('已取消本次生图请求');
+        get().addSystemMessage('已停止等待生图响应；这不代表云端生成已取消，系统会按原 request_id 恢复结果');
+        toast('已停止等待，不代表云端生图已取消');
         set({ ...clearRequestState, isGenerating: false });
+        void get().recoverPendingImageRequest();
         return;
       }
 
       console.error('Failed to generate image:', error);
-      addChatMessage('assistant', '生成失败，请重试');
+      addChatMessage('assistant', '暂时无法确认生图结果。系统已保留 request_id，将继续恢复，请勿立即重复提交。');
       set({ ...clearRequestState, isGenerating: false });
+      void get().recoverPendingImageRequest();
     }
   },
 
-  generateVideo: async (userParams, imageDatas) => {
+  generateVideo: async (userParams, imageDatas, compiledRequest = null) => {
     const {
       token,
       user,
-      setUser,
-      refreshBilling,
-      workspaceChatMessages,
       selectedModel,
       aspectRatio,
       videoDurationSeconds,
       videoResolution,
       videoFrameMode,
+      videoGenerateAudio,
+      seedanceReferenceVideo,
+      authEpoch,
       ensureAuthenticatedForModelAction,
     } = get();
 
@@ -1431,19 +2688,91 @@ export const useAppStore = create((set, get) => ({
       return;
     }
 
+    const authContext = { token, ownerUserId: user?.id, authEpoch };
+    if (!user?.id || !isSameAuthContext(get, authContext)) {
+      appendWorkspaceMessage(set, get, {
+        role: 'assistant',
+        content: '登录状态仍在同步，请稍后再提交 Seedance 任务。',
+      });
+      return;
+    }
+
+    const capabilities = await get().loadVideoCapabilities();
+    if (!isSameAuthContext(get, authContext)) {
+      return;
+    }
+    if (!isUsableVideoCapabilities(capabilities)) {
+      appendWorkspaceMessage(set, get, {
+        role: 'assistant',
+        content: capabilities?.disabled_reason || 'Seedance 视频服务暂不可用，请稍后再试。',
+      });
+      toast.error('Seedance 视频服务暂不可用');
+      return;
+    }
+
     const normalizedImages = normalizeReferenceImages(imageDatas);
+    const referenceVideoUrl = seedanceReferenceVideo?.video_url || null;
+    const freshRequest = createGenerationRequestDto({
+      model: selectedModel,
+      prompt: userParams,
+      duration: videoDurationSeconds,
+      resolution: videoResolution,
+      aspectRatio,
+      frameMode: videoFrameMode,
+      referenceImages: normalizedImages,
+      hasReferenceVideo: Boolean(referenceVideoUrl),
+      referenceVideoSignature: createReferenceVideoSignature(seedanceReferenceVideo),
+      capabilities,
+    });
+    if (compiledRequest) {
+      const comparison = compareGenerationRequest(compiledRequest, freshRequest);
+      if (comparison.stale) {
+        appendWorkspaceMessage(set, get, {
+          role: 'assistant',
+          content: `Seedance 请求参数或价格已变化（${comparison.changedFields.join('、')}），请重新编译后再提交。`,
+        });
+        toast.error('Seedance 请求已过期，请重新编译');
+        return;
+      }
+    }
+    const requestDto = compiledRequest || freshRequest;
+
+    const storedActiveTask = loadActiveVideoTask(globalThis.localStorage, user.id);
+    const storedPendingSubmission = loadPendingVideoSubmission(globalThis.localStorage, user.id);
+    if (
+      (storedActiveTask && isActiveVideoTaskOwnedByUser(storedActiveTask, user))
+      || storedPendingSubmission
+    ) {
+      appendWorkspaceMessage(set, get, {
+        role: 'assistant',
+        content: '已有 Seedance 任务尚未确认结束，正在恢复该任务。为避免重复扣费，暂不提交新任务。',
+      });
+      void get().recoverActiveVideoTask({
+        requestId: storedPendingSubmission?.requestId || null,
+      });
+      toast('正在恢复上一条 Seedance 任务');
+      return;
+    }
+
     const userMsg = {
       role: 'user',
-      content: userParams || '生成视频',
+      content: requestDto.prompt || '生成视频',
       imageDatas: [...normalizedImages],
     };
-    const updated = [...workspaceChatMessages, userMsg];
+    const updated = [...get().workspaceChatMessages, userMsg];
     const generationRequest = createGenerationRequestState();
     const clearRequestState = clearGenerationRequestState();
+    const requestId = createClientRequestId();
+    persistPendingVideoSubmission({
+      requestId,
+      ownerUserId: user?.id || null,
+      createdAt: Date.now(),
+    });
 
     set({
       workspaceChatMessages: updated,
       isGenerating: true,
+      activeVideoPollingTaskId: null,
       ...generationRequest.nextState,
     });
 
@@ -1456,117 +2785,126 @@ export const useAppStore = create((set, get) => ({
         },
         signal: generationRequest.signal,
         body: JSON.stringify({
-          request_id: createClientRequestId(),
-          prompt: userParams,
-          image_data: normalizedImages[0] || null,
+          request_id: requestId,
+          prompt: requestDto.prompt,
           image_datas: normalizedImages.length > 0 ? normalizedImages : null,
-          aspect_ratio: aspectRatio,
-          resolution: normalizeSeedanceResolution(videoResolution),
-          video_mode: resolveSeedanceVideoMode(videoFrameMode, normalizedImages.length),
-          duration_seconds: normalizeVideoDurationSeconds(videoDurationSeconds),
-          selected_model: selectedModel || 'seedance-2.0',
+          aspect_ratio: requestDto.aspectRatio,
+          resolution: requestDto.resolution,
+          video_mode: requestDto.frameMode,
+          reference_video_url: seedanceReferenceVideo?.video_url || null,
+          duration_seconds: requestDto.duration,
+          generate_audio: Boolean(videoGenerateAudio),
+          selected_model: requestDto.model,
         }),
       });
-      const createdTask = await response.json();
+      const createdTask = await readResponseJson(response);
+
+      if (
+        !isSameAuthContext(get, authContext)
+        || get().activeGenerationController !== generationRequest.controller
+      ) {
+        return;
+      }
 
       if (!response.ok) {
-        const errorText = response.status === 402 ? '积分不足，请充值' : (createdTask.detail || '视频任务创建失败');
+        if ([400, 401, 402, 403, 404, 422, 423, 429].includes(response.status)) {
+          clearPendingVideoSubmission(globalThis.localStorage, requestId, user.id);
+        }
+        const errorText = response.status === 402
+          ? '积分不足，请充值'
+          : getApiErrorMessage(createdTask, '视频任务创建失败');
+        appendWorkspaceMessage(set, get, { role: 'assistant', content: errorText });
         set({
-          workspaceChatMessages: [...updated, { role: 'assistant', content: errorText }],
           ...clearRequestState,
           isGenerating: false,
         });
+        if ([408, 409].includes(response.status) || response.status >= 500) {
+          void get().recoverActiveVideoTask({ requestId });
+        } else if (response.status === 423) {
+          void get().recoverActiveVideoTask();
+        }
         return;
       }
 
-      const taskId = createdTask.task_id;
-      set({
-        workspaceChatMessages: [
-          ...updated,
-          { role: 'assistant', content: 'Seedance 视频任务已提交，正在生成...' },
-        ],
+      const taskId = String(createdTask.task_id || '').trim();
+      if (!taskId) {
+        throw new Error('Seedance 任务已提交，但响应中缺少任务 ID');
+      }
+      const activeVideoTask = persistVideoTaskState(set, {
+        taskId,
+        requestId: createdTask.request_id || requestId,
+        ownerUserId: user?.id || null,
+        createdAt: Date.now(),
+        lastCheckedAt: null,
+        lastStatus: createdTask.status || 'submitted',
       });
-
-      for (let attempt = 0; attempt < VIDEO_MAX_POLL_ATTEMPTS; attempt += 1) {
-        if (attempt > 0) {
-          await sleepWithAbort(VIDEO_POLL_INTERVAL_MS, generationRequest.signal);
-        }
-
-        const taskResponse = await fetch(`${API_BASE}/v1/video/tasks/${taskId}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-          signal: generationRequest.signal,
-        });
-        const taskData = await taskResponse.json();
-
-        if (!taskResponse.ok) {
-          throw new Error(taskData.detail || '视频任务查询失败');
-        }
-
-        const taskState = buildVideoTaskPollingState(taskData);
-        if (!taskState.isTerminal) {
-          continue;
-        }
-
-        if (!taskState.isSuccess) {
-          set({
-            workspaceChatMessages: [...get().workspaceChatMessages, {
-              role: 'assistant',
-              content: 'Seedance 视频生成失败，积分已自动退回。',
-            }],
-            ...clearRequestState,
-            isGenerating: false,
-          });
-          refreshBilling().catch(() => null);
-          return;
-        }
-
-        const videoUrl = getVideoUrlOrThrow(taskData);
+      if (!activeVideoTask) {
         set({
-          workspaceChatMessages: [...get().workspaceChatMessages, {
-            role: 'assistant',
-            content: 'Seedance 视频已生成',
-            videoUrl: videoUrl,
-          }],
           ...clearRequestState,
-          generatedImage: null,
+          activeVideoPollingTaskId: null,
           isGenerating: false,
-          chatInput: '',
         });
-
-        if (user && typeof taskData.remaining_credits === 'number') {
-          setUser({ ...user, credits: taskData.remaining_credits });
-        }
-        refreshBilling().catch(() => null);
+        appendWorkspaceMessage(set, get, {
+          role: 'assistant',
+          content: '另一标签页已更新 Seedance 恢复状态，正在按请求标识重新核对，未重复提交。',
+        });
+        void get().recoverActiveVideoTask({ requestId });
         return;
       }
-
-      set({
-        workspaceChatMessages: [...get().workspaceChatMessages, {
-          role: 'assistant',
-          content: `视频仍在生成中，任务 ID：${taskId}。请稍后再试，或把任务 ID 发给管理员查询。`,
-        }],
-        ...clearRequestState,
-        isGenerating: false,
+      clearPendingVideoSubmission(globalThis.localStorage, requestId, user.id);
+      set((state) => ({
+        activeVideoPollingTaskId: taskId,
+        ...(referenceVideoUrl && state.seedanceReferenceVideo?.video_url === referenceVideoUrl
+          ? { seedanceReferenceVideo: null, videoFrameMode: 'auto' }
+          : {}),
+      }));
+      appendWorkspaceMessage(set, get, {
+        role: 'assistant',
+        content: 'Seedance 视频任务已提交，正在生成...',
+      });
+      await watchSeedanceVideoTask({
+        set,
+        get,
+        task: activeVideoTask,
+        token,
+        ownerUserId: user?.id,
+        authEpoch,
+        generationRequest,
       });
     } catch (error) {
+      if (
+        !isSameAuthContext(get, authContext)
+        || get().activeGenerationController !== generationRequest.controller
+      ) {
+        return;
+      }
       if (isAbortGenerationError(error)) {
-        get().addSystemMessage('已取消本次视频生成请求');
-        toast('已取消本次视频生成请求');
-        set({ ...clearRequestState, isGenerating: false });
+        get().addSystemMessage('已停止等待 Seedance 提交结果；这不代表云端任务已取消');
+        toast('已停止等待，不代表云端任务已取消');
+        if (get().activeGenerationController === generationRequest.controller) {
+          set({ ...clearRequestState, activeVideoPollingTaskId: null, isGenerating: false });
+        }
         return;
       }
 
       console.error('Failed to generate video:', error);
       set({
-        workspaceChatMessages: [...get().workspaceChatMessages, {
-          role: 'assistant',
-          content: error.message || '视频生成失败，请重试',
-        }],
         ...clearRequestState,
+        activeVideoPollingTaskId: null,
         isGenerating: false,
       });
+      const recovered = await get().recoverActiveVideoTask({ requestId });
+      const pendingSubmission = loadPendingVideoSubmission(globalThis.localStorage, user.id);
+      if (
+        !recovered
+        && isSameAuthContext(get, authContext)
+        && pendingSubmission?.requestId === requestId
+      ) {
+        appendWorkspaceMessage(set, get, {
+          role: 'assistant',
+          content: '暂时无法确认 Seedance 提交结果。系统会保留请求标识，并在刷新或重新登录后继续恢复，请勿立即重复提交。',
+        });
+      }
     }
   },
 }));

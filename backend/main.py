@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Header, Depends, Request, Response
+from fastapi import FastAPI, HTTPException, Header, Depends, File, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -80,6 +80,7 @@ from runtime_security import (
 )
 from pricing import (
     DEFAULT_SEEDANCE_RESOLUTION,
+    MIN_VIDEO_DURATION_SECONDS,
     MAX_VIDEO_DURATION_SECONDS,
     SEEDANCE_RESOLUTION_CREDITS_PER_SECOND,
     calculate_video_generation_cost,
@@ -117,6 +118,14 @@ require_distinct_runtime_secrets(
 )
 
 # 静态文件服务
+SEEDANCE_REFERENCE_VIDEO_MAX_BYTES = int(
+    os.getenv("SEEDANCE_REFERENCE_VIDEO_MAX_BYTES", str(24 * 1024 * 1024))
+)
+SEEDANCE_REFERENCE_VIDEO_MIME_TYPES = {
+    ".mp4": {"video/mp4", "application/mp4"},
+    ".webm": {"video/webm"},
+    ".mov": {"video/quicktime"},
+}
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # CORS 配置（从环境变量读取）
@@ -319,7 +328,14 @@ class VideoGenerateRequest(BaseModel):
     resolution: Optional[str] = "720p"
     duration_seconds: Optional[int] = 5
     video_mode: Optional[str] = "auto"
+    reference_video_url: Optional[str] = None
+    generate_audio: bool = True
     selected_model: Optional[str] = "seedance-2.0"
+
+class ReferenceVideoUploadResponse(BaseModel):
+    video_url: str
+    filename: str
+    size_bytes: int
 
 class VideoTaskResponse(BaseModel):
     task_id: str
@@ -344,6 +360,9 @@ class VideoCapabilitiesResponse(BaseModel):
     resolution_credits_per_second: dict
     aspect_ratios: List[str]
     max_reference_images: int
+    supports_reference_video: bool
+    max_reference_video_bytes: int
+    max_reference_video_duration_seconds: int
 
 class FrontendErrorPayload(BaseModel):
     route: str = Field(..., min_length=1, max_length=256)
@@ -1116,7 +1135,7 @@ def _build_openai_image_edit_files(reference_images: Optional[List[str]] = None)
     files: List[Tuple[str, Tuple[str, bytes, str]]] = []
     for index, image_data in enumerate(_normalize_reference_images(image_datas=reference_images), start=1):
         filename, raw_bytes, mime_type = _decode_reference_image_upload(image_data, index=index)
-        files.append(("image[]", (filename, raw_bytes, mime_type)))
+        files.append(("image", (filename, raw_bytes, mime_type)))
     return files
 
 
@@ -1355,7 +1374,6 @@ SEEDANCE_LEGACY_ACTIVE_STATUS_MAP = {
 }
 SEEDANCE_FAILURE_STATUSES = {"failed", "error", "cancelled", "canceled"}
 SEEDANCE_SUCCESS_STATUSES = {"succeeded", "success", "completed"}
-SEEDANCE_MIN_DURATION_SECONDS = 5
 _seedance_reconciler_task = None
 _seedance_admin_reconcile_jobs = set()
 _seedance_reconciler_last_success_at = None
@@ -1414,6 +1432,8 @@ def _seedance_request_fingerprint(
     selected_model: str,
     video_mode: str,
     reference_images: List[str],
+    reference_video_url: Optional[str] = None,
+    generate_audio: Optional[bool] = None,
 ) -> str:
     image_identities = []
     for image in reference_images:
@@ -1424,16 +1444,21 @@ def _seedance_request_fingerprint(
             image_identities.append({
                 "sha256": hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
             })
+    canonical_payload = {
+        "prompt": prompt,
+        "aspect_ratio": aspect_ratio,
+        "resolution": resolution,
+        "duration_seconds": duration_seconds,
+        "selected_model": selected_model,
+        "video_mode": video_mode,
+        "references": image_identities,
+    }
+    if reference_video_url:
+        canonical_payload["reference_video"] = {"url": reference_video_url.strip()}
+    if generate_audio is not None:
+        canonical_payload["generate_audio"] = generate_audio
     canonical = json.dumps(
-        {
-            "prompt": prompt,
-            "aspect_ratio": aspect_ratio,
-            "resolution": resolution,
-            "duration_seconds": duration_seconds,
-            "selected_model": selected_model,
-            "video_mode": video_mode,
-            "references": image_identities,
-        },
+        canonical_payload,
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
@@ -1441,11 +1466,25 @@ def _seedance_request_fingerprint(
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _normalize_seedance_video_mode(video_mode: Optional[str], *, image_count: int) -> str:
+def _normalize_seedance_video_mode(
+    video_mode: Optional[str],
+    *,
+    image_count: int,
+    has_reference_video: bool = False,
+) -> str:
     normalized = (video_mode or "auto").strip().lower().replace("-", "_")
-    if normalized not in {"auto", "standard", "first_frame", "reference_image", "first_last_frame"}:
+    if normalized not in {
+        "auto",
+        "standard",
+        "first_frame",
+        "reference_image",
+        "reference_video",
+        "first_last_frame",
+    }:
         raise HTTPException(status_code=400, detail="不支持的视频生成模式")
     if normalized == "auto":
+        if has_reference_video:
+            return "reference_video"
         if image_count == 0:
             return "standard"
         if image_count == 1:
@@ -1461,13 +1500,21 @@ def _normalize_seedance_video_mode(video_mode: Optional[str], *, image_count: in
     return normalized
 
 
-def _validate_seedance_image_mode(video_mode: str, image_count: int):
+def _validate_seedance_media_mode(video_mode: str, image_count: int, reference_video_url: Optional[str]):
     if video_mode == "first_frame" and image_count != 1:
         raise HTTPException(status_code=400, detail="首帧图生视频需要上传 1 张图片")
     if video_mode == "first_last_frame" and image_count != 2:
         raise HTTPException(status_code=400, detail="首尾帧视频需要上传首帧和尾帧两张图")
     if video_mode == "reference_image" and not 1 <= image_count <= 9:
         raise HTTPException(status_code=400, detail="参考图视频需要上传 1-9 张图片")
+    if video_mode == "reference_video" and not reference_video_url:
+        raise HTTPException(status_code=400, detail="参考视频模式需要先上传参考视频")
+    if reference_video_url and video_mode != "reference_video":
+        raise HTTPException(status_code=400, detail="已上传参考视频，请选择参考视频模式或移除视频")
+
+
+def _validate_seedance_image_mode(video_mode: str, image_count: int):
+    _validate_seedance_media_mode(video_mode, image_count, None)
 
 
 def _get_seedance_image_role(video_mode: str, image_index: int) -> Optional[str]:
@@ -1475,7 +1522,7 @@ def _get_seedance_image_role(video_mode: str, image_index: int) -> Optional[str]
         return "first_frame"
     if video_mode == "first_last_frame":
         return "first_frame" if image_index == 0 else "last_frame"
-    if video_mode == "reference_image":
+    if video_mode in {"reference_image", "reference_video"}:
         return "reference_image"
     return None
 
@@ -1557,6 +1604,44 @@ def _validate_seedance_reference_url(image_url: str) -> str:
     return image_url.strip()
 
 
+def _normalize_seedance_reference_video_url(value: Optional[str]) -> Optional[str]:
+    normalized = (value or "").strip()
+    if not normalized:
+        return None
+    validated = _validate_seedance_reference_url(normalized)
+    extension = os.path.splitext(urlparse(validated).path)[1].lower()
+    if extension not in SEEDANCE_REFERENCE_VIDEO_MIME_TYPES:
+        raise HTTPException(status_code=400, detail="参考视频地址必须指向 MP4、WebM 或 MOV 文件")
+    return validated
+
+
+def _seedance_local_reference_path_from_url(reference_url: Optional[str]) -> Optional[str]:
+    if not reference_url:
+        return None
+    public_base_url = _build_public_base_url()
+    expected_prefix = f"{public_base_url}/static/seedance_references/"
+    if not reference_url.startswith(expected_prefix):
+        return None
+
+    filename = os.path.basename(urlparse(reference_url).path)
+    if not re.fullmatch(r"[a-f0-9]{32}\.(?:mp4|webm|mov)", filename):
+        raise HTTPException(status_code=400, detail="参考视频地址无效，请重新上传")
+    reference_root = os.path.realpath(os.path.join("static", "seedance_references"))
+    candidate = os.path.realpath(os.path.join(reference_root, filename))
+    if os.path.dirname(candidate) != reference_root or not os.path.isfile(candidate):
+        raise HTTPException(status_code=400, detail="参考视频已失效，请重新上传")
+    return candidate
+
+
+def _validate_seedance_reference_video_signature(extension: str, header: bytes):
+    if extension == ".webm":
+        if not header.startswith(b"\x1a\x45\xdf\xa3"):
+            raise HTTPException(status_code=400, detail="参考视频不是有效的 WebM 文件")
+        return
+    if len(header) < 12 or (header[4:8] != b"ftyp" and b"moov" not in header[:32]):
+        raise HTTPException(status_code=400, detail="参考视频不是有效的 MP4/MOV 文件")
+
+
 def _decode_seedance_reference_image(image_data: str) -> Tuple[bytes, str]:
     if not image_data.startswith("data:") or "," not in image_data:
         raise HTTPException(status_code=400, detail="Seedance 参考图必须是 data URL 或受信任的 HTTPS 地址")
@@ -1628,40 +1713,54 @@ def _serialize_seedance_reference_state(
     local_paths: List[str],
     image_urls: List[str],
     video_mode: str,
+    generate_audio: bool,
+    reference_video_url: Optional[str] = None,
 ) -> str:
     return json.dumps(
         {
             "local_paths": local_paths,
             "image_urls": image_urls,
             "video_mode": video_mode,
+            "generate_audio": generate_audio,
+            "reference_video_url": reference_video_url,
         },
         ensure_ascii=False,
         separators=(",", ":"),
     )
 
 
-def _parse_seedance_reference_state(reference_paths_value) -> Tuple[List[str], List[str], Optional[str]]:
+def _parse_seedance_reference_state(
+    reference_paths_value,
+) -> Tuple[List[str], List[str], Optional[str], Optional[bool], Optional[str]]:
     if not reference_paths_value:
-        return [], [], None
+        return [], [], None, None, None
     if isinstance(reference_paths_value, str):
         try:
             value = json.loads(reference_paths_value)
         except json.JSONDecodeError:
-            return [], [], None
+            return [], [], None, None, None
     else:
         value = reference_paths_value
     if isinstance(value, list):
-        return [item for item in value if isinstance(item, str)], [], None
+        return [item for item in value if isinstance(item, str)], [], None, None, None
     if not isinstance(value, dict):
-        return [], [], None
+        return [], [], None, None, None
     local_paths = [item for item in value.get("local_paths", []) if isinstance(item, str)]
     image_urls = [item for item in value.get("image_urls", []) if isinstance(item, str)]
     video_mode = value.get("video_mode")
-    return local_paths, image_urls, video_mode if isinstance(video_mode, str) else None
+    generate_audio = value.get("generate_audio")
+    reference_video_url = value.get("reference_video_url")
+    return (
+        local_paths,
+        image_urls,
+        video_mode if isinstance(video_mode, str) else None,
+        generate_audio if isinstance(generate_audio, bool) else None,
+        reference_video_url if isinstance(reference_video_url, str) else None,
+    )
 
 
 def _cleanup_seedance_reference_paths(reference_paths_value) -> int:
-    paths, _, _ = _parse_seedance_reference_state(reference_paths_value)
+    paths, _, _, _, _ = _parse_seedance_reference_state(reference_paths_value)
 
     root = os.path.realpath(os.path.join("static", "seedance_references"))
     removed = 0
@@ -1685,6 +1784,7 @@ def _build_seedance_content(
     resolution: str,
     duration_seconds: int,
     video_mode: str,
+    reference_video_url: Optional[str] = None,
 ) -> List[dict]:
     content = [{
         "type": "text",
@@ -1704,6 +1804,12 @@ def _build_seedance_content(
         if role:
             image_item["role"] = role
         content.append(image_item)
+    if reference_video_url:
+        content.append({
+            "type": "video_url",
+            "video_url": {"url": reference_video_url},
+            "role": "reference_video",
+        })
     return content
 
 
@@ -1715,6 +1821,8 @@ async def _create_seedance_task(
     resolution: str,
     duration_seconds: int,
     video_mode: str,
+    generate_audio: bool,
+    reference_video_url: Optional[str],
     idempotency_key: str,
 ) -> Tuple[str, str]:
     api_key = _get_seedance_api_key()
@@ -1728,13 +1836,14 @@ async def _create_seedance_task(
             resolution=resolution,
             duration_seconds=duration_seconds,
             video_mode=video_mode,
+            reference_video_url=reference_video_url,
         ),
         "ratio": aspect_ratio,
         "resolution": resolution,
         "duration": duration_seconds,
         "watermark": False,
         "camera_fixed": False,
-        "generate_audio": False,
+        "generate_audio": generate_audio,
     }
     url = f"{_get_seedance_base_url()}/seedance/v3/contents/generations/tasks"
     timeout = httpx.Timeout(
@@ -2068,11 +2177,20 @@ async def _submit_seedance_task_record(
     if not _claim_seedance_submission(db, task):
         return task
 
-    _, image_urls, stored_video_mode = _parse_seedance_reference_state(task.reference_paths)
+    (
+        _,
+        image_urls,
+        stored_video_mode,
+        stored_generate_audio,
+        reference_video_url,
+    ) = _parse_seedance_reference_state(
+        task.reference_paths
+    )
     video_mode = stored_video_mode or _normalize_seedance_video_mode(
         "auto",
         image_count=len(image_urls),
     )
+    generate_audio = stored_generate_audio if stored_generate_audio is not None else False
     provider_task_id = None
     provider_model = None
     try:
@@ -2083,6 +2201,8 @@ async def _submit_seedance_task_record(
             resolution=task.resolution,
             duration_seconds=task.duration_seconds,
             video_mode=video_mode,
+            generate_audio=generate_audio,
+            reference_video_url=reference_video_url,
             idempotency_key=_seedance_provider_idempotency_key(
                 user_id=task.user_id,
                 request_id=task.request_id,
@@ -2454,7 +2574,7 @@ def _cleanup_expired_seedance_reference_files(db: Session) -> int:
     for value, in db.query(VideoGenerationTask.reference_paths).filter(
         func.lower(VideoGenerationTask.status).in_(SEEDANCE_ACTIVE_STATUSES)
     ).all():
-        local_paths, _, _ = _parse_seedance_reference_state(value)
+        local_paths, _, _, _, _ = _parse_seedance_reference_state(value)
         active_paths.update(os.path.realpath(item) for item in local_paths)
     ttl_seconds = int(os.getenv("SEEDANCE_REFERENCE_TTL_SECONDS", "86400"))
     cutoff = datetime.utcnow().timestamp() - max(3600, ttl_seconds)
@@ -3981,6 +4101,91 @@ async def workspace_chat(
         print(f"❌ workspace_chat 错误: {type(error).__name__}")
         raise HTTPException(status_code=500, detail="对话请求处理失败")
 
+@app.post("/api/v1/video/reference-upload", response_model=ReferenceVideoUploadResponse)
+async def upload_seedance_reference_video(
+    http_request: Request,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if os.getenv("SEEDANCE_FEATURE_ENABLED", "false").strip().lower() not in {"1", "true", "yes"}:
+        await file.close()
+        raise HTTPException(status_code=503, detail="Seedance 视频功能正在维护，暂不接受参考视频")
+
+    try:
+        check_and_increment_user_limit(
+            db,
+            current_user.id,
+            "video_reference_upload",
+            int(os.getenv("VIDEO_REFERENCE_UPLOAD_USER_HOURLY_LIMIT", "30")),
+            period="hour",
+        )
+        check_and_increment_ip_limit(
+            db,
+            extract_client_ip(http_request),
+            "video_reference_upload",
+            int(os.getenv("VIDEO_REFERENCE_UPLOAD_IP_HOURLY_LIMIT", "60")),
+            period="hour",
+        )
+    except ValueError as error:
+        await file.close()
+        raise HTTPException(status_code=429, detail=str(error))
+
+    original_filename = os.path.basename(file.filename or "")[:255]
+    extension = os.path.splitext(original_filename)[1].lower()
+    content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
+    allowed_mime_types = SEEDANCE_REFERENCE_VIDEO_MIME_TYPES.get(extension)
+    if not allowed_mime_types or (
+        content_type
+        and content_type != "application/octet-stream"
+        and content_type not in allowed_mime_types
+    ):
+        await file.close()
+        raise HTTPException(status_code=400, detail="参考视频仅支持 MP4、WebM 或 MOV 格式")
+
+    target_dir = os.path.join("static", "seedance_references")
+    os.makedirs(target_dir, exist_ok=True)
+    os.chmod(target_dir, 0o755)
+    safe_filename = f"{uuid.uuid4().hex}{extension}"
+    target_path = os.path.join(target_dir, safe_filename)
+    temporary_path = f"{target_path}.part"
+    size_bytes = 0
+    header = bytearray()
+
+    try:
+        with open(temporary_path, "xb") as output:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                size_bytes += len(chunk)
+                if size_bytes > SEEDANCE_REFERENCE_VIDEO_MAX_BYTES:
+                    raise HTTPException(status_code=413, detail="参考视频不能超过 24MB")
+                if len(header) < 64:
+                    header.extend(chunk[:64 - len(header)])
+                output.write(chunk)
+        if size_bytes == 0:
+            raise HTTPException(status_code=400, detail="参考视频文件为空")
+        _validate_seedance_reference_video_signature(extension, bytes(header))
+        os.replace(temporary_path, target_path)
+        os.chmod(target_path, 0o644)
+    except Exception:
+        with suppress(FileNotFoundError):
+            os.remove(temporary_path)
+        with suppress(FileNotFoundError):
+            os.remove(target_path)
+        raise
+    finally:
+        await file.close()
+
+    public_base_url = _build_public_base_url(http_request)
+    return ReferenceVideoUploadResponse(
+        video_url=f"{public_base_url}/static/seedance_references/{safe_filename}",
+        filename=original_filename,
+        size_bytes=size_bytes,
+    )
+
+
 @app.post("/api/v1/video/generate")
 async def create_video_generation_task(
     request: VideoGenerateRequest,
@@ -3990,6 +4195,7 @@ async def create_video_generation_task(
 ):
     request_id = request.request_id or str(uuid.uuid4())
     duration_seconds = request.duration_seconds if request.duration_seconds is not None else 5
+    generate_audio = bool(request.generate_audio)
     aspect_ratio = _normalize_seedance_aspect_ratio(request.aspect_ratio)
     selected_model = _normalize_seedance_selected_model(request.selected_model)
     prompt = _build_seedance_prompt(
@@ -4001,8 +4207,13 @@ async def create_video_generation_task(
         image_data=request.image_data,
         image_datas=request.image_datas,
     )
-    video_mode = _normalize_seedance_video_mode(request.video_mode, image_count=len(raw_reference_images))
-    _validate_seedance_image_mode(video_mode, len(raw_reference_images))
+    reference_video_url = _normalize_seedance_reference_video_url(request.reference_video_url)
+    video_mode = _normalize_seedance_video_mode(
+        request.video_mode,
+        image_count=len(raw_reference_images),
+        has_reference_video=bool(reference_video_url),
+    )
+    _validate_seedance_media_mode(video_mode, len(raw_reference_images), reference_video_url)
     try:
         resolution = normalize_video_resolution(request.resolution)
     except ValueError as e:
@@ -4015,6 +4226,18 @@ async def create_video_generation_task(
         selected_model=selected_model,
         video_mode=video_mode,
         reference_images=raw_reference_images,
+        reference_video_url=reference_video_url,
+        generate_audio=generate_audio,
+    )
+    legacy_request_fingerprint = _seedance_request_fingerprint(
+        prompt=prompt,
+        aspect_ratio=aspect_ratio,
+        resolution=resolution,
+        duration_seconds=duration_seconds,
+        selected_model=selected_model,
+        video_mode=video_mode,
+        reference_images=raw_reference_images,
+        reference_video_url=reference_video_url,
     )
     idempotency_key = f"video-generate:{current_user.id}:{request_id}"
 
@@ -4022,7 +4245,8 @@ async def create_video_generation_task(
     if existing_task:
         fingerprint_mismatch = (
             existing_task.request_fingerprint is not None
-            and existing_task.request_fingerprint != request_fingerprint
+            and existing_task.request_fingerprint
+            not in {request_fingerprint, legacy_request_fingerprint}
         )
         legacy_mismatch = existing_task.request_fingerprint is None and any((
             existing_task.prompt != prompt,
@@ -4121,6 +4345,9 @@ async def create_video_generation_task(
     public_base_url = _build_public_base_url(http_request) if has_local_reference_images else ""
     saved_reference_paths: List[str] = []
     try:
+        local_reference_video_path = _seedance_local_reference_path_from_url(reference_video_url)
+        if local_reference_video_path:
+            saved_reference_paths.append(local_reference_video_path)
         reference_images = [
             _save_seedance_reference_image(
                 image_data,
@@ -4134,7 +4361,7 @@ async def create_video_generation_task(
             os.path.getsize(path) for path in saved_reference_paths if os.path.exists(path)
         )
         max_total_bytes = int(
-            os.getenv("SEEDANCE_REFERENCE_TOTAL_MAX_BYTES", str(12 * 1024 * 1024))
+            os.getenv("SEEDANCE_REFERENCE_TOTAL_MAX_BYTES", str(36 * 1024 * 1024))
         )
         if total_reference_bytes > max_total_bytes:
             raise HTTPException(status_code=413, detail="Seedance 参考图总大小过大，请减少图片或压缩后重试")
@@ -4177,6 +4404,8 @@ async def create_video_generation_task(
                 local_paths=saved_reference_paths,
                 image_urls=reference_images,
                 video_mode=video_mode,
+                generate_audio=generate_audio,
+                reference_video_url=reference_video_url,
             ),
             attempt_count=0,
             next_poll_at=None,
@@ -4274,12 +4503,15 @@ async def get_video_capabilities():
         enabled=enabled,
         disabled_reason=disabled_reason,
         model="seedance-2.0",
-        min_duration_seconds=SEEDANCE_MIN_DURATION_SECONDS,
+        min_duration_seconds=MIN_VIDEO_DURATION_SECONDS,
         max_duration_seconds=MAX_VIDEO_DURATION_SECONDS,
         default_resolution=DEFAULT_SEEDANCE_RESOLUTION,
         resolution_credits_per_second=dict(SEEDANCE_RESOLUTION_CREDITS_PER_SECOND),
         aspect_ratios=list(SEEDANCE_ASPECT_RATIOS),
         max_reference_images=9,
+        supports_reference_video=True,
+        max_reference_video_bytes=SEEDANCE_REFERENCE_VIDEO_MAX_BYTES,
+        max_reference_video_duration_seconds=15,
     )
 
 

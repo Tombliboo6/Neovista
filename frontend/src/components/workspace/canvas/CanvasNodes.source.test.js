@@ -25,8 +25,22 @@ test('storyboard compiles connected constraints and real references for Seedance
   assert.match(source, /compileShotGenerationDraft/);
   assert.match(source, /resolveCanvasAssetDataUrls/);
   assert.match(source, /setUploadedImages\(resolved\.dataUrls\)/);
-  assert.match(source, /setSelectedModel\('seedance-2\.0'\)/);
+  assert.match(source, /setSelectedModel\(compiledRequest\.request\.model\)/);
   assert.match(source, /setVideoDurationSeconds/);
+  assert.match(source, /const hasReferenceVideo = Boolean\(seedanceReferenceVideo\?\.video_url\)/);
+  assert.match(source, /requestedFrameMode = hasReferenceVideo/);
+  assert.match(source, /referenceVideoSignature: createReferenceVideoSignature\(seedanceReferenceVideo\)/);
+  assert.match(source, /createImmutableGenerationRequest/);
   assert.match(source, /编译到 Seedance/);
   assert.match(source, /status: 'compiled'/);
+});
+
+test('story nodes import UTF-8 Markdown and generation nodes fail closed', () => {
+  assert.match(source, /readStoryScriptFile/);
+  assert.match(source, /STORY_FILE_ACCEPT/);
+  assert.match(source, /总提示词超过 4000 字会明确阻止发送/);
+  assert.match(source, /if \(!prompt\)/);
+  assert.match(source, /setChatInput\(prompt\)/);
+  assert.match(source, /setUploadedImages\(referenceUrls\)/);
+  assert.match(source, /加载到右侧生成器/);
 });

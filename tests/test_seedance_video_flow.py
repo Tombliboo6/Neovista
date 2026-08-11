@@ -13,6 +13,7 @@ import httpx
 from PIL import Image
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
+from starlette.datastructures import Headers
 
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -364,7 +365,7 @@ class SeedanceVideoFlowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_SeedanceAsyncClient.last_post_json["duration"], 5)
         self.assertEqual(_SeedanceAsyncClient.last_post_json["watermark"], False)
         self.assertEqual(_SeedanceAsyncClient.last_post_json["camera_fixed"], False)
-        self.assertEqual(_SeedanceAsyncClient.last_post_json["generate_audio"], False)
+        self.assertEqual(_SeedanceAsyncClient.last_post_json["generate_audio"], True)
         self.assertEqual(_SeedanceAsyncClient.last_post_json["content"][0]["type"], "text")
         self.assertEqual(
             _SeedanceAsyncClient.last_post_json["content"][0]["text"],
@@ -495,6 +496,118 @@ class SeedanceVideoFlowTest(unittest.IsolatedAsyncioTestCase):
             "https://cdn.example.com/ref-b.png",
             "https://cdn.example.com/ref-c.png",
         ])
+
+    async def test_upload_seedance_reference_video_saves_public_file(self):
+        video_bytes = b"\x00\x00\x00\x18ftypmp42reference-video-bytes"
+        upload = main.UploadFile(
+            filename="camera-motion.mp4",
+            file=io.BytesIO(video_bytes),
+            headers=Headers({"content-type": "video/mp4"}),
+        )
+
+        previous_cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            try:
+                os.chdir(temp_dir)
+                with (
+                    patch.object(main, "check_and_increment_user_limit"),
+                    patch.object(main, "check_and_increment_ip_limit"),
+                ):
+                    response = await main.upload_seedance_reference_video(
+                        _FakeRequest(),
+                        upload,
+                        self.user,
+                        self.db,
+                    )
+
+                saved_path = pathlib.Path(temp_dir) / "static" / "seedance_references" / pathlib.Path(response.video_url).name
+                self.assertTrue(saved_path.exists())
+                self.assertEqual(saved_path.read_bytes(), video_bytes)
+                self.assertEqual(saved_path.stat().st_mode & 0o644, 0o644)
+                self.assertEqual(response.filename, "camera-motion.mp4")
+                self.assertEqual(response.size_bytes, len(video_bytes))
+                self.assertTrue(response.video_url.startswith("https://neotest.site/static/seedance_references/"))
+            finally:
+                os.chdir(previous_cwd)
+
+    async def test_upload_seedance_reference_video_rejects_disguised_file(self):
+        upload = main.UploadFile(
+            filename="not-a-video.mp4",
+            file=io.BytesIO(b"plain text disguised as mp4"),
+            headers=Headers({"content-type": "video/mp4"}),
+        )
+
+        previous_cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            try:
+                os.chdir(temp_dir)
+                with (
+                    patch.object(main, "check_and_increment_user_limit"),
+                    patch.object(main, "check_and_increment_ip_limit"),
+                    self.assertRaises(main.HTTPException) as context,
+                ):
+                    await main.upload_seedance_reference_video(
+                        _FakeRequest(),
+                        upload,
+                        self.user,
+                        self.db,
+                    )
+                self.assertEqual(context.exception.status_code, 400)
+                self.assertEqual(list((pathlib.Path(temp_dir) / "static" / "seedance_references").glob("*")), [])
+            finally:
+                os.chdir(previous_cwd)
+
+    async def test_create_seedance_reference_video_uses_v3_role_and_audio_setting(self):
+        request = main.VideoGenerateRequest(
+            prompt="参考镜头运动生成建筑空间漫游",
+            reference_video_url="https://cdn.example.com/camera-motion.mp4",
+            video_mode="reference_video",
+            generate_audio=False,
+            request_id="video-reference-video-req",
+        )
+        client_factory = lambda timeout=180.0: _SeedanceAsyncClient(
+            post_response=_response(
+                "POST",
+                "https://ai.comfly.chat/seedance/v3/contents/generations/tasks",
+                {"id": "cgt-reference-video-task"},
+            )
+        )
+
+        with patch.object(main.httpx, "AsyncClient", client_factory):
+            response = await main.create_video_generation_task(
+                request,
+                _FakeRequest(),
+                self.user,
+                self.db,
+            )
+
+        self.assertTrue(response.task_id)
+        self.assertEqual(_SeedanceAsyncClient.last_post_json["generate_audio"], False)
+        self.assertEqual(_SeedanceAsyncClient.last_post_json["content"][1], {
+            "type": "video_url",
+            "video_url": {"url": "https://cdn.example.com/camera-motion.mp4"},
+            "role": "reference_video",
+        })
+        task = self._task_by_request_id("video-reference-video-req")
+        persisted_state = json.loads(task.reference_paths)
+        self.assertEqual(persisted_state["reference_video_url"], "https://cdn.example.com/camera-motion.mp4")
+        self.assertEqual(persisted_state["generate_audio"], False)
+
+    async def test_seedance_reference_video_mode_requires_video_before_hold(self):
+        request = main.VideoGenerateRequest(
+            prompt="参考镜头运动生成建筑空间漫游",
+            video_mode="reference_video",
+            request_id="video-reference-video-missing",
+        )
+
+        with self.assertRaisesRegex(main.HTTPException, "参考视频"):
+            await main.create_video_generation_task(request, _FakeRequest(), self.user, self.db)
+
+        self.assertEqual(_SeedanceAsyncClient.post_calls, 0)
+        self.assertEqual(
+            self.db.query(CreditTransaction).filter(CreditTransaction.type == "GENERATE_HOLD").count(),
+            0,
+        )
 
     async def test_query_seedance_first_last_frame_task_uses_v3_endpoint(self):
         create_request = main.VideoGenerateRequest(
@@ -1022,6 +1135,8 @@ class SeedanceVideoFlowTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(capabilities.enabled)
         self.assertEqual(capabilities.default_resolution, "720p")
+        self.assertEqual(capabilities.min_duration_seconds, 4)
+        self.assertEqual(capabilities.max_duration_seconds, 15)
         self.assertEqual(capabilities.resolution_credits_per_second, {
             "720p": 250,
             "1080p": 300,
@@ -1063,9 +1178,15 @@ class SeedanceVideoFlowTest(unittest.IsolatedAsyncioTestCase):
             os.umask(old_umask)
             os.chdir(old_cwd)
 
-    def test_seedance_video_pricing_rejects_duration_below_five_seconds(self):
-        with self.assertRaisesRegex(ValueError, "不能少于 5 秒"):
-            calculate_video_generation_cost(4, "seedance-2.0")
+    def test_seedance_video_pricing_accepts_official_four_second_minimum(self):
+        self.assertEqual(
+            calculate_video_generation_cost(4, "seedance-2.0", "720p"),
+            1000,
+        )
+
+    def test_seedance_video_pricing_rejects_duration_below_four_seconds(self):
+        with self.assertRaisesRegex(ValueError, "不能少于 4 秒"):
+            calculate_video_generation_cost(3, "seedance-2.0")
 
 
 if __name__ == "__main__":

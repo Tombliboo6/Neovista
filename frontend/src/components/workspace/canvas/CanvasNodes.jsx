@@ -4,6 +4,7 @@ import {
   Clapperboard,
   FileCheck2,
   FileText,
+  FileUp,
   Image as ImageIcon,
   ImagePlus,
   Link2,
@@ -24,6 +25,14 @@ import {
   saveCanvasAsset,
 } from '../../../lib/canvasAssetStore';
 import { compileShotGenerationDraft } from '../../../lib/continuityManifest';
+import {
+  createImmutableGenerationRequest,
+  createReferenceVideoSignature,
+  isUsableVideoCapabilities,
+} from '../../../lib/canvasGenerationDraft';
+import { readStoryScriptFile, STORY_FILE_ACCEPT } from '../../../lib/storyScriptImport';
+import { getImageCapabilityModel } from '../../../lib/imageGenerationCapabilities';
+import { SEEDANCE_MIN_DURATION_SECONDS } from '../../../lib/videoGeneration';
 import { useAppStore } from '../../../store/useAppStore';
 import { useCanvasGraphStore } from '../../../store/useCanvasGraphStore';
 
@@ -183,12 +192,56 @@ function ReferenceAssetPicker({ assets = [], onChange, label }) {
 
 export function StoryNode({ id, data }) {
   const updateNodeData = useCanvasGraphStore((state) => state.updateNodeData);
+  const inputRef = useRef(null);
+  const [isImporting, setIsImporting] = useState(false);
+
+  const importScript = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setIsImporting(true);
+    try {
+      const script = await readStoryScriptFile(file);
+      updateNodeData(id, {
+        text: script.text,
+        scriptFileName: script.name,
+        scriptFileBytes: script.byteSize,
+        status: 'draft',
+      });
+      toast.success(`已导入 ${script.name} · ${script.characterCount} 字`);
+    } catch (error) {
+      toast.error(error?.message || '剧本导入失败');
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
   return (
     <NodeShell icon={FileText} title={data.title || '剧情脚本'} status={data.status || 'draft'} className="is-story">
       <div className="nv-story-meta">
         <span>{data.genre || '剧情短片'}</span>
         <span>目标 {data.targetDuration || 45}s</span>
+      </div>
+      <div className="nv-story-import">
+        <input
+          ref={inputRef}
+          type="file"
+          accept={STORY_FILE_ACCEPT}
+          hidden
+          onChange={importScript}
+        />
+        <button
+          type="button"
+          className="nodrag nv-canvas-node__action"
+          disabled={isImporting}
+          onClick={() => inputRef.current?.click()}
+        >
+          <FileUp size={13} />
+          {isImporting ? '正在读取…' : '导入 Markdown / TXT'}
+        </button>
+        <span title={data.scriptFileName || undefined}>
+          {data.scriptFileName || 'UTF-8 · 最大 512KB'}
+        </span>
       </div>
       <textarea
         className="nodrag nowheel nv-canvas-node__textarea nv-canvas-node__textarea--story"
@@ -197,7 +250,9 @@ export function StoryNode({ id, data }) {
         placeholder="粘贴故事梗概、对白或完整剧本…"
         aria-label="剧情脚本内容"
       />
-      <p className="nv-node-functional-note">连接到分镜表后，剧本会作为剧情上下文进入镜头请求编译。</p>
+      <p className="nv-node-functional-note">
+        当前 {(data.text || '').length} 字。连接到分镜表后会完整进入编译；总提示词超过 4000 字会明确阻止发送，不会静默截断。
+      </p>
       <OutputHandle type="story" />
     </NodeShell>
   );
@@ -408,9 +463,13 @@ export function StoryboardNode({ id, data }) {
   const setSelectedModel = useAppStore((state) => state.setSelectedModel);
   const setAgentMode = useAppStore((state) => state.setAgentMode);
   const setVideoDurationSeconds = useAppStore((state) => state.setVideoDurationSeconds);
+  const videoResolution = useAppStore((state) => state.videoResolution);
+  const setVideoResolution = useAppStore((state) => state.setVideoResolution);
   const setVideoFrameMode = useAppStore((state) => state.setVideoFrameMode);
   const setAspectRatio = useAppStore((state) => state.setAspectRatio);
   const setUploadedImages = useAppStore((state) => state.setUploadedImages);
+  const loadVideoCapabilities = useAppStore((state) => state.loadVideoCapabilities);
+  const seedanceReferenceVideo = useAppStore((state) => state.seedanceReferenceVideo);
   const shots = data.shots || [];
   const activeShot = shots.find((shot) => shot.id === data.activeShotId) || shots[0] || null;
 
@@ -441,6 +500,28 @@ export function StoryboardNode({ id, data }) {
     }
 
     try {
+      const capabilities = await loadVideoCapabilities();
+      if (!isUsableVideoCapabilities(capabilities)) {
+        const failedDraft = {
+          ...draft,
+          ok: false,
+          errors: [
+            ...draft.errors,
+            capabilities?.disabled_reason || 'Seedance 能力与计费参数未通过校验，请稍后重试',
+          ],
+          compiledAt: new Date().toISOString(),
+          referenceCount: 0,
+        };
+        setUploadedImages([]);
+        updateNodeData(id, {
+          activeShotId: shot.id,
+          shots: shots.map((item) => item.id === shot.id ? { ...item, status: 'error' } : item),
+        });
+        setGenerationDraft(failedDraft);
+        toast.error(failedDraft.errors.at(-1));
+        return;
+      }
+
       const resolved = await resolveCanvasAssetDataUrls(draft.referenceAssets);
       if (resolved.missingAssetIds.length > 0) {
         const failedDraft = {
@@ -460,11 +541,29 @@ export function StoryboardNode({ id, data }) {
         return;
       }
 
-      setSelectedModel('seedance-2.0');
-      setVideoDurationSeconds(draft.duration);
-      setVideoFrameMode('auto');
-      setAspectRatio(draft.aspectRatio);
-      setChatInput(draft.prompt);
+      const hasReferenceVideo = Boolean(seedanceReferenceVideo?.video_url);
+      const requestedFrameMode = hasReferenceVideo
+        ? 'reference_video'
+        : (resolved.dataUrls.length > 0 ? 'reference_image' : 'auto');
+      const compiledRequest = createImmutableGenerationRequest({
+        model: 'seedance-2.0',
+        prompt: draft.prompt,
+        duration: draft.duration,
+        resolution: videoResolution,
+        aspectRatio: draft.aspectRatio,
+        frameMode: requestedFrameMode,
+        referenceImages: resolved.dataUrls,
+        hasReferenceVideo,
+        referenceVideoSignature: createReferenceVideoSignature(seedanceReferenceVideo),
+        capabilities,
+      });
+
+      setSelectedModel(compiledRequest.request.model);
+      setVideoDurationSeconds(compiledRequest.request.duration);
+      setVideoResolution(compiledRequest.request.resolution);
+      setVideoFrameMode(requestedFrameMode);
+      setAspectRatio(compiledRequest.request.aspectRatio);
+      setChatInput(compiledRequest.request.prompt);
       setUploadedImages(resolved.dataUrls);
       updateNodeData(id, {
         activeShotId: shot.id,
@@ -474,12 +573,10 @@ export function StoryboardNode({ id, data }) {
         ...draft,
         compiledAt: new Date().toISOString(),
         referenceCount: resolved.dataUrls.length,
-        request: {
-          model: 'seedance-2.0',
-          duration: draft.duration,
-          aspectRatio: draft.aspectRatio,
-          imageCount: resolved.dataUrls.length,
-        },
+        stale: false,
+        staleReasons: [],
+        request: compiledRequest.request,
+        requestFingerprint: compiledRequest.fingerprint,
       });
       toast.success(`已编译 ${draft.id} · ${resolved.dataUrls.length} 张参考图`);
     } catch (error) {
@@ -563,7 +660,7 @@ export function StoryboardNode({ id, data }) {
                 </select>
               </Field>
               <Field label="时长">
-                <input type="number" min="5" max="15" value={activeShot.duration || 5} onChange={(event) => updateShot(activeShot.id, { duration: Number(event.target.value) })} />
+                <input type="number" min={SEEDANCE_MIN_DURATION_SECONDS} max="15" value={activeShot.duration || 5} onChange={(event) => updateShot(activeShot.id, { duration: Number(event.target.value) })} />
               </Field>
             </div>
             <Field label="运镜">
@@ -627,6 +724,9 @@ export function GenerationNode({ id, data }) {
   const setSelectedModel = useAppStore((state) => state.setSelectedModel);
   const setAgentMode = useAppStore((state) => state.setAgentMode);
   const setUploadedImages = useAppStore((state) => state.setUploadedImages);
+  const setVideoFrameMode = useAppStore((state) => state.setVideoFrameMode);
+  const videoCapabilities = useAppStore((state) => state.videoCapabilities);
+  const imageCapabilities = useAppStore((state) => state.imageCapabilities);
   const isVideo = data.generationKind === 'video';
 
   const prepareGeneration = () => {
@@ -637,16 +737,39 @@ export function GenerationNode({ id, data }) {
       .map((edge) => edge.source);
     const promptNode = nodes.find((node) => node.id === promptSourceId);
     const referenceUrls = nodes
-      .filter((node) => referenceSourceIds.includes(node.id) && node.data?.url)
+      .filter((node) => (
+        referenceSourceIds.includes(node.id)
+        && node.data?.outputType === 'image'
+        && node.data?.url
+      ))
       .map((node) => node.data.url);
     const prompt = promptNode?.data?.text?.trim() || data.prompt?.trim() || '';
 
-    setSelectedModel(isVideo ? 'seedance-2.0' : 'nano-banana-2');
     setAgentMode(false);
-    if (prompt) setChatInput(prompt);
-    if (referenceUrls.length > 0) setUploadedImages(referenceUrls);
+    setChatInput(prompt);
+    setUploadedImages(referenceUrls);
+    if (!prompt) {
+      updateNodeData(id, { status: 'error' });
+      toast.error('生成节点缺少提示词，已清除旧提示词与参考图');
+      return;
+    }
+    if (isVideo && !isUsableVideoCapabilities(videoCapabilities)) {
+      updateNodeData(id, { status: 'error' });
+      toast.error('Seedance 能力与价格尚未通过校验');
+      return;
+    }
+    const imageModel = isVideo
+      ? null
+      : getImageCapabilityModel(imageCapabilities, imageCapabilities?.defaultModel);
+    if (!isVideo && !imageModel) {
+      updateNodeData(id, { status: 'error' });
+      toast.error('生图模型与价格尚未通过校验');
+      return;
+    }
+    setSelectedModel(isVideo ? 'seedance-2.0' : imageModel.id);
+    if (isVideo && referenceUrls.length > 0) setVideoFrameMode('reference_image');
     updateNodeData(id, { status: 'ready' });
-    toast.success(isVideo ? '已加载到 Seedance 生成器' : '已加载到生图生成器');
+    toast.success(isVideo ? '已加载到 Seedance 参数区，请检查后发送' : '已加载到生图参数区，请检查后发送');
   };
 
   return (
@@ -663,10 +786,10 @@ export function GenerationNode({ id, data }) {
         <span><i className="is-image" />参考素材</span>
       </div>
       <p className="nv-canvas-node__description">
-        {isVideo ? '连接提示词和首尾帧，在右侧确认时长、清晰度与模式。' : '连接提示词与参考图，在右侧确认模型、比例和生成数量。'}
+        {isVideo ? '连接提示词和参考图，在右侧确认时长、清晰度与模式。' : '连接提示词与参考图，在右侧确认模型与比例。'}
       </p>
       <button type="button" className="nodrag nv-canvas-node__primary" onClick={prepareGeneration}>
-        配置并生成
+        加载到右侧生成器
       </button>
       <OutputHandle type={isVideo ? 'video' : 'image'} />
     </NodeShell>
