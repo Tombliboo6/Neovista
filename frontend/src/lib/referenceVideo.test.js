@@ -38,3 +38,8 @@ test('Seedance reference video duration must be no longer than 15 seconds', () =
   assert.throws(() => validateSeedanceReferenceVideoDuration(15.01), /15 秒/);
   assert.throws(() => validateSeedanceReferenceVideoDuration(Number.NaN), /读取参考视频时长/);
 });
+
+test('Seedance 2.5 reference video validation accepts the server-provided 30 second limit', () => {
+  assert.equal(validateSeedanceReferenceVideoDuration(30, 30), 30);
+  assert.throws(() => validateSeedanceReferenceVideoDuration(30.01, 30), /30 秒/);
+});

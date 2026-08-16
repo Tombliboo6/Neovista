@@ -32,18 +32,28 @@ export function validateSeedanceReferenceVideoFile(file) {
   return file;
 }
 
-export function validateSeedanceReferenceVideoDuration(value) {
+export function validateSeedanceReferenceVideoDuration(
+  value,
+  maxDurationSeconds = SEEDANCE_REFERENCE_VIDEO_MAX_DURATION_SECONDS,
+) {
   const duration = Number(value);
+  const maxDuration = Number(maxDurationSeconds);
   if (!Number.isFinite(duration) || duration <= 0) {
     throw new Error('无法读取参考视频时长');
   }
-  if (duration > SEEDANCE_REFERENCE_VIDEO_MAX_DURATION_SECONDS) {
-    throw new Error('参考视频不能超过 15 秒');
+  if (!Number.isFinite(maxDuration) || maxDuration <= 0) {
+    throw new Error('参考视频时长限制无效');
+  }
+  if (duration > maxDuration) {
+    throw new Error(`参考视频不能超过 ${maxDuration} 秒`);
   }
   return duration;
 }
 
-export function readSeedanceReferenceVideoDuration(file) {
+export function readSeedanceReferenceVideoDuration(
+  file,
+  maxDurationSeconds = SEEDANCE_REFERENCE_VIDEO_MAX_DURATION_SECONDS,
+) {
   validateSeedanceReferenceVideoFile(file);
   return new Promise((resolve, reject) => {
     const objectUrl = URL.createObjectURL(file);
@@ -57,7 +67,10 @@ export function readSeedanceReferenceVideoDuration(file) {
     video.preload = 'metadata';
     video.onloadedmetadata = () => {
       try {
-        const duration = validateSeedanceReferenceVideoDuration(video.duration);
+        const duration = validateSeedanceReferenceVideoDuration(
+          video.duration,
+          maxDurationSeconds,
+        );
         cleanup();
         resolve(duration);
       } catch (error) {

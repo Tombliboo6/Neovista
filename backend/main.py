@@ -79,12 +79,16 @@ from runtime_security import (
     require_runtime_secret,
 )
 from pricing import (
+    DEFAULT_SEEDANCE_MODEL,
     DEFAULT_SEEDANCE_RESOLUTION,
     MIN_VIDEO_DURATION_SECONDS,
     MAX_VIDEO_DURATION_SECONDS,
     SEEDANCE_RESOLUTION_CREDITS_PER_SECOND,
     calculate_video_generation_cost,
+    get_video_duration_limits,
+    get_video_resolution_pricing,
     get_resolution_pricing,
+    normalize_video_model,
     normalize_video_resolution,
 )
 
@@ -350,6 +354,20 @@ class VideoTaskResponse(BaseModel):
     retry_after_ms: Optional[int] = None
 
 
+class VideoModelCapability(BaseModel):
+    id: str
+    label: str
+    min_duration_seconds: int
+    max_duration_seconds: int
+    default_resolution: str
+    resolution_credits_per_second: dict
+    aspect_ratios: List[str]
+    max_reference_images: int
+    supports_reference_video: bool
+    max_reference_video_bytes: int
+    max_reference_video_duration_seconds: int
+
+
 class VideoCapabilitiesResponse(BaseModel):
     enabled: bool
     disabled_reason: Optional[str] = None
@@ -363,6 +381,7 @@ class VideoCapabilitiesResponse(BaseModel):
     supports_reference_video: bool
     max_reference_video_bytes: int
     max_reference_video_duration_seconds: int
+    models: List[VideoModelCapability]
 
 class FrontendErrorPayload(BaseModel):
     route: str = Field(..., min_length=1, max_length=256)
@@ -1335,10 +1354,18 @@ def _get_seedance_base_url() -> str:
     return base_url
 
 
-def _get_seedance_model() -> str:
-    model = os.getenv("SEEDANCE_MODEL", "doubao-seedance-2-0-260128").strip()
+def _get_seedance_model(selected_model: Optional[str] = None) -> str:
+    try:
+        normalized = normalize_video_model(selected_model)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    environment_name, default_model = {
+        "seedance-2.0": ("SEEDANCE_MODEL", "doubao-seedance-2-0-260128"),
+        "seedance-2.5": ("SEEDANCE_25_MODEL", "doubao-seedance-2.5"),
+    }[normalized]
+    model = os.getenv(environment_name, default_model).strip()
     if not model:
-        raise HTTPException(status_code=500, detail="Seedance API 未配置：缺少 SEEDANCE_MODEL")
+        raise HTTPException(status_code=500, detail=f"Seedance API 未配置：缺少 {environment_name}")
     return model
 
 
@@ -1391,10 +1418,10 @@ def _normalize_seedance_aspect_ratio(aspect_ratio: Optional[str]) -> str:
 
 
 def _normalize_seedance_selected_model(selected_model: Optional[str]) -> str:
-    normalized = (selected_model or "seedance-2.0").strip().lower()
-    if normalized != "seedance-2.0":
-        raise HTTPException(status_code=400, detail="视频接口仅支持 seedance-2.0")
-    return normalized
+    try:
+        return normalize_video_model(selected_model)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
 
 
 def _seedance_retry_delay_seconds(attempt_count: int) -> int:
@@ -1824,9 +1851,9 @@ async def _create_seedance_task(
     generate_audio: bool,
     reference_video_url: Optional[str],
     idempotency_key: str,
+    provider_model: str,
 ) -> Tuple[str, str]:
     api_key = _get_seedance_api_key()
-    provider_model = _get_seedance_model()
     payload = {
         "model": provider_model,
         "content": _build_seedance_content(
@@ -2206,6 +2233,10 @@ async def _submit_seedance_task_record(
             idempotency_key=_seedance_provider_idempotency_key(
                 user_id=task.user_id,
                 request_id=task.request_id,
+            ),
+            provider_model=(
+                task.provider_model
+                or _get_seedance_model(task.selected_model)
             ),
         )
         task.provider_task_id = provider_task_id
@@ -4215,7 +4246,7 @@ async def create_video_generation_task(
     )
     _validate_seedance_media_mode(video_mode, len(raw_reference_images), reference_video_url)
     try:
-        resolution = normalize_video_resolution(request.resolution)
+        resolution = normalize_video_resolution(request.resolution, selected_model)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     request_fingerprint = _seedance_request_fingerprint(
@@ -4283,7 +4314,7 @@ async def create_video_generation_task(
     # configuration is invalid. These helpers intentionally do not expose secrets.
     _get_seedance_api_key()
     _get_seedance_base_url()
-    provider_model = _get_seedance_model()
+    provider_model = _get_seedance_model(selected_model)
 
     existing_hold = db.query(CreditTransaction).filter(
         CreditTransaction.idempotency_key == idempotency_key,
@@ -4484,6 +4515,31 @@ async def create_video_generation_task(
     return _build_video_task_response_from_record(db, task, current_user)
 
 
+def _build_video_model_capability(selected_model: str) -> VideoModelCapability:
+    normalized_model = _normalize_seedance_selected_model(selected_model)
+    min_duration, max_duration = get_video_duration_limits(normalized_model)
+    return VideoModelCapability(
+        id=normalized_model,
+        label={
+            "seedance-2.0": "Seedance 2.0",
+            "seedance-2.5": "Seedance 2.5",
+        }[normalized_model],
+        min_duration_seconds=min_duration,
+        max_duration_seconds=max_duration,
+        default_resolution=DEFAULT_SEEDANCE_RESOLUTION,
+        resolution_credits_per_second=dict(
+            get_video_resolution_pricing(normalized_model)
+        ),
+        aspect_ratios=list(SEEDANCE_ASPECT_RATIOS),
+        max_reference_images=9,
+        supports_reference_video=True,
+        max_reference_video_bytes=SEEDANCE_REFERENCE_VIDEO_MAX_BYTES,
+        max_reference_video_duration_seconds=(
+            30 if normalized_model == "seedance-2.5" else 15
+        ),
+    )
+
+
 @app.get("/api/v1/video/capabilities", response_model=VideoCapabilitiesResponse)
 async def get_video_capabilities():
     enabled = os.getenv("SEEDANCE_FEATURE_ENABLED", "false").strip().lower() in {"1", "true", "yes"}
@@ -4492,7 +4548,8 @@ async def get_video_capabilities():
         try:
             _get_seedance_api_key()
             _get_seedance_base_url()
-            _get_seedance_model()
+            _get_seedance_model("seedance-2.0")
+            _get_seedance_model("seedance-2.5")
             _build_public_base_url()
         except HTTPException:
             enabled = False
@@ -4512,6 +4569,10 @@ async def get_video_capabilities():
         supports_reference_video=True,
         max_reference_video_bytes=SEEDANCE_REFERENCE_VIDEO_MAX_BYTES,
         max_reference_video_duration_seconds=15,
+        models=[
+            _build_video_model_capability("seedance-2.0"),
+            _build_video_model_capability("seedance-2.5"),
+        ],
     )
 
 

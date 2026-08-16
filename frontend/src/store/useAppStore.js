@@ -38,6 +38,7 @@ import {
   compareGenerationRequest,
   createGenerationRequestDto,
   createReferenceVideoSignature,
+  getVideoModelCapabilities,
   isUsableVideoCapabilities,
 } from '../lib/canvasGenerationDraft.js';
 import {
@@ -49,6 +50,7 @@ import {
   getVideoPollRetryDelayMs,
   getVideoUrlOrThrow,
   isActiveVideoTaskOwnedByUser,
+  isSeedanceModel,
   isTransientVideoPollStatus,
   loadActiveVideoTask,
   loadPendingVideoSubmission,
@@ -71,10 +73,11 @@ applyThemePreference(initialTheme);
 // API 基础路径（开发和生产都用相对路径，Vite proxy 处理）
 const API_BASE = '/api';
 
-const normalizeVideoDurationForCapabilities = (value, capabilities) => {
+const normalizeVideoDurationForCapabilities = (value, capabilities, model = null) => {
   const fallback = normalizeVideoDurationSeconds(value);
-  const min = Number(capabilities?.min_duration_seconds);
-  const max = Number(capabilities?.max_duration_seconds);
+  const modelCapabilities = getVideoModelCapabilities(capabilities, model);
+  const min = Number(modelCapabilities?.min_duration_seconds);
+  const max = Number(modelCapabilities?.max_duration_seconds);
   if (!Number.isFinite(min) || !Number.isFinite(max) || min > max) {
     return fallback;
   }
@@ -82,13 +85,14 @@ const normalizeVideoDurationForCapabilities = (value, capabilities) => {
   return Math.min(max, Math.max(min, Number.isFinite(parsed) ? parsed : min));
 };
 
-const normalizeVideoResolutionForCapabilities = (value, capabilities) => {
-  const options = capabilities?.resolution_credits_per_second;
+const normalizeVideoResolutionForCapabilities = (value, capabilities, model = null) => {
+  const modelCapabilities = getVideoModelCapabilities(capabilities, model);
+  const options = modelCapabilities?.resolution_credits_per_second;
   const normalized = String(value || '').trim().toLowerCase();
   if (options && Object.prototype.hasOwnProperty.call(options, normalized)) {
     return normalized;
   }
-  const serverDefault = String(capabilities?.default_resolution || '').trim().toLowerCase();
+  const serverDefault = String(modelCapabilities?.default_resolution || '').trim().toLowerCase();
   if (options && Object.prototype.hasOwnProperty.call(options, serverDefault)) {
     return serverDefault;
   }
@@ -1396,10 +1400,18 @@ export const useAppStore = create((set, get) => ({
   setAspectRatio: (ratio) => set({ aspectRatio: ratio }),
   setNumImages: () => set({ numImages: 1 }),
   setVideoDurationSeconds: (duration) => set({
-    videoDurationSeconds: normalizeVideoDurationForCapabilities(duration, get().videoCapabilities),
+    videoDurationSeconds: normalizeVideoDurationForCapabilities(
+      duration,
+      get().videoCapabilities,
+      get().selectedModel,
+    ),
   }),
   setVideoResolution: (resolution) => set({
-    videoResolution: normalizeVideoResolutionForCapabilities(resolution, get().videoCapabilities),
+    videoResolution: normalizeVideoResolutionForCapabilities(
+      resolution,
+      get().videoCapabilities,
+      get().selectedModel,
+    ),
   }),
   setVideoFrameMode: (mode) => set((state) => {
     const videoFrameMode = normalizeSeedanceVideoMode(mode);
@@ -1427,18 +1439,22 @@ export const useAppStore = create((set, get) => ({
     }
 
     validateSeedanceReferenceVideoFile(file);
-    const duration = validateSeedanceReferenceVideoDuration(durationSeconds);
     const authContext = { token, ownerUserId: user?.id, authEpoch };
-    const formData = new FormData();
-    formData.append('file', file);
     set({ isSeedanceReferenceVideoUploading: true });
 
     try {
       const capabilities = await get().loadVideoCapabilities();
       if (!isSameAuthContext(get, authContext)) return null;
-      if (capabilities?.supports_reference_video !== true) {
+      const modelCapabilities = getVideoModelCapabilities(capabilities, get().selectedModel);
+      if (modelCapabilities?.supports_reference_video !== true) {
         throw new Error('Seedance 参考视频服务当前不可用');
       }
+      const duration = validateSeedanceReferenceVideoDuration(
+        durationSeconds,
+        modelCapabilities.max_reference_video_duration_seconds,
+      );
+      const formData = new FormData();
+      formData.append('file', file);
 
       const response = await fetch(`${API_BASE}/v1/video/reference-upload`, {
         method: 'POST',
@@ -1470,9 +1486,37 @@ export const useAppStore = create((set, get) => ({
     }
   },
   setSelectedModel: (model) => set((state) => {
-    const normalized = String(model || '').trim();
-    if (!normalized || normalized === 'seedance-2.0') {
-      return { selectedModel: normalized, numImages: 1 };
+    const normalized = String(model || '').trim().toLowerCase();
+    if (!normalized) {
+      return { selectedModel: '', numImages: 1 };
+    }
+    if (isSeedanceModel(normalized)) {
+      const modelCapabilities = getVideoModelCapabilities(state.videoCapabilities, normalized);
+      const maxReferenceDuration = Number(
+        modelCapabilities?.max_reference_video_duration_seconds,
+      );
+      const referenceDuration = Number(state.seedanceReferenceVideo?.duration_seconds);
+      const clearReferenceVideo = Number.isFinite(maxReferenceDuration)
+        && Number.isFinite(referenceDuration)
+        && referenceDuration > maxReferenceDuration;
+      return {
+        selectedModel: normalized,
+        videoDurationSeconds: normalizeVideoDurationForCapabilities(
+          state.videoDurationSeconds,
+          state.videoCapabilities,
+          normalized,
+        ),
+        videoResolution: normalizeVideoResolutionForCapabilities(
+          state.videoResolution,
+          state.videoCapabilities,
+          normalized,
+        ),
+        seedanceReferenceVideo: clearReferenceVideo ? null : state.seedanceReferenceVideo,
+        videoFrameMode: clearReferenceVideo && state.videoFrameMode === 'reference_video'
+          ? 'auto'
+          : state.videoFrameMode,
+        numImages: 1,
+      };
     }
     const capabilityModel = getImageCapabilityModel(state.imageCapabilities, normalized);
     if (!capabilityModel) {
@@ -1512,7 +1556,7 @@ export const useAppStore = create((set, get) => ({
         const parsed = parseImageCapabilities(data);
         set((state) => {
           const selectedImageModel = getImageCapabilityModel(parsed, state.selectedModel);
-          const selectedModel = state.selectedModel === 'seedance-2.0'
+          const selectedModel = isSeedanceModel(state.selectedModel)
             ? state.selectedModel
             : (selectedImageModel?.id || '');
           return {
@@ -1536,7 +1580,7 @@ export const useAppStore = create((set, get) => ({
         });
         set((state) => ({
           imageCapabilities: unavailable,
-          selectedModel: state.selectedModel === 'seedance-2.0' ? state.selectedModel : '',
+          selectedModel: isSeedanceModel(state.selectedModel) ? state.selectedModel : '',
           numImages: 1,
         }));
         return unavailable;
@@ -1577,10 +1621,12 @@ export const useAppStore = create((set, get) => ({
           videoDurationSeconds: normalizeVideoDurationForCapabilities(
             state.videoDurationSeconds,
             data,
+            isSeedanceModel(state.selectedModel) ? state.selectedModel : data.model,
           ),
           videoResolution: normalizeVideoResolutionForCapabilities(
             state.videoResolution,
             data,
+            isSeedanceModel(state.selectedModel) ? state.selectedModel : data.model,
           ),
         }));
         return data;
@@ -2701,7 +2747,7 @@ export const useAppStore = create((set, get) => ({
     if (!isSameAuthContext(get, authContext)) {
       return;
     }
-    if (!isUsableVideoCapabilities(capabilities)) {
+    if (!isUsableVideoCapabilities(capabilities, selectedModel)) {
       appendWorkspaceMessage(set, get, {
         role: 'assistant',
         content: capabilities?.disabled_reason || 'Seedance 视频服务暂不可用，请稍后再试。',

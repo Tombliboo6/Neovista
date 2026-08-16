@@ -9,25 +9,28 @@ const videoGenerationSource = readFileSync(new URL('../../lib/videoGeneration.js
 const canvasNodesSource = readFileSync(new URL('./canvas/CanvasNodes.jsx', import.meta.url), 'utf8');
 const canvasDraftSource = readFileSync(new URL('../../lib/canvasGenerationDraft.js', import.meta.url), 'utf8');
 
-test('AgentChatInput exposes Seedance 2.0 and routes it to video generation', () => {
-  assert.match(agentInputSource, /<option value="seedance-2\.0" disabled=\{!seedanceEnabled\}>/);
+test('AgentChatInput exposes server-provided Seedance 2.0 and 2.5 models and routes them to video generation', () => {
+  assert.match(agentInputSource, /seedanceModels\.map/);
+  assert.match(agentInputSource, /model\.label/);
   assert.match(agentInputSource, /const generateVideo = useAppStore\(\(s\) => s\.generateVideo\);/);
   assert.match(agentInputSource, /if \(isSeedanceModel\(selectedModel\)\)/);
   assert.match(agentInputSource, /generateVideo\(\s*userInput,\s*referenceImages,\s*storyMode \? generationDraft\.request : null/);
 });
 
-test('AgentChatInput lets users type any Seedance duration from 4 to 15 seconds', () => {
+test('Seedance duration controls use the selected model capability limits', () => {
   assert.match(agentInputSource, /type="number"/);
   assert.match(agentInputSource, /min=\{seedanceMinDuration\}/);
   assert.match(agentInputSource, /max=\{seedanceMaxDuration\}/);
   assert.match(agentInputSource, /step=\{1\}/);
   assert.doesNotMatch(agentInputSource, /<option value=\{10\}>10秒<\/option>/);
-  assert.match(canvasNodesSource, /min=\{SEEDANCE_MIN_DURATION_SECONDS\}/);
+  assert.match(canvasNodesSource, /min=\{minVideoDuration\}/);
+  assert.match(canvasNodesSource, /max=\{maxVideoDuration\}/);
+  assert.match(canvasNodesSource, /model:\s*storyboardVideoModel/);
 });
 
 test('AgentChatInput exposes only server-provided Seedance resolution pricing', () => {
   assert.match(agentInputSource, /videoResolution/);
-  assert.match(agentInputSource, /videoCapabilities\.resolution_credits_per_second/);
+  assert.match(agentInputSource, /activeVideoCapabilities\.resolution_credits_per_second/);
   assert.match(agentInputSource, /Object\.entries\(capabilityPricing\)/);
   assert.match(agentInputSource, /formatSeedanceResolutionLabel\(value\)/);
   assert.match(agentInputSource, /点\/秒/);

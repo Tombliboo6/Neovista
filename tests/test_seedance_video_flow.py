@@ -383,6 +383,35 @@ class SeedanceVideoFlowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(task.resolution, "4k")
         self.assertEqual(task.hold_transaction_id, self.db.query(CreditTransaction).filter(CreditTransaction.type == "GENERATE_HOLD").one().id)
 
+    async def test_seedance_25_uses_the_comfly_provider_model_and_two_second_minimum(self):
+        request = main.VideoGenerateRequest(
+            prompt="生成一段两秒的产品动态镜头",
+            duration_seconds=2,
+            resolution="720p",
+            selected_model="seedance-2.5",
+            request_id="video-seedance-25",
+        )
+        with patch.object(main.httpx, "AsyncClient", lambda timeout=180.0: _SeedanceAsyncClient(
+            post_response=_response(
+                "POST",
+                "https://ai.comfly.chat/seedance/v3/contents/generations/tasks",
+                {"id": "provider-seedance-25"},
+            )
+        )):
+            response = await main.create_video_generation_task(
+                request,
+                _FakeRequest(),
+                self.user,
+                self.db,
+            )
+
+        self.assertEqual(response.status, "submitted")
+        self.assertEqual(response.charged_credits, 550)
+        self.assertEqual(_SeedanceAsyncClient.last_post_json["model"], "doubao-seedance-2.5")
+        task = self._task_by_request_id("video-seedance-25")
+        self.assertEqual(task.selected_model, "seedance-2.5")
+        self.assertEqual(task.provider_model, "doubao-seedance-2.5")
+
     async def test_duplicate_seedance_request_id_returns_existing_task_without_new_upstream_task(self):
         request = main.VideoGenerateRequest(
             prompt="生成一个滨水更新片区分析动画",
@@ -1142,6 +1171,19 @@ class SeedanceVideoFlowTest(unittest.IsolatedAsyncioTestCase):
             "1080p": 300,
             "4k": 600,
         })
+        models = {model.id: model for model in capabilities.models}
+        self.assertEqual(set(models), {"seedance-2.0", "seedance-2.5"})
+        self.assertEqual(models["seedance-2.0"].max_duration_seconds, 15)
+        self.assertEqual(models["seedance-2.5"].label, "Seedance 2.5")
+        self.assertEqual(models["seedance-2.5"].min_duration_seconds, 2)
+        self.assertEqual(models["seedance-2.5"].max_duration_seconds, 30)
+        self.assertEqual(models["seedance-2.5"].resolution_credits_per_second, {
+            "720p": 275,
+            "1080p": 330,
+            "4k": 660,
+        })
+        self.assertTrue(models["seedance-2.5"].supports_reference_video)
+        self.assertEqual(models["seedance-2.5"].max_reference_video_duration_seconds, 30)
 
     async def test_feature_flag_disables_new_tasks_and_capabilities(self):
         request = main.VideoGenerateRequest(

@@ -28,11 +28,12 @@ import { compileShotGenerationDraft } from '../../../lib/continuityManifest';
 import {
   createImmutableGenerationRequest,
   createReferenceVideoSignature,
+  getVideoModelCapabilities,
   isUsableVideoCapabilities,
 } from '../../../lib/canvasGenerationDraft';
 import { readStoryScriptFile, STORY_FILE_ACCEPT } from '../../../lib/storyScriptImport';
 import { getImageCapabilityModel } from '../../../lib/imageGenerationCapabilities';
-import { SEEDANCE_MIN_DURATION_SECONDS } from '../../../lib/videoGeneration';
+import { isSeedanceModel } from '../../../lib/videoGeneration';
 import { useAppStore } from '../../../store/useAppStore';
 import { useCanvasGraphStore } from '../../../store/useCanvasGraphStore';
 
@@ -469,9 +470,18 @@ export function StoryboardNode({ id, data }) {
   const setAspectRatio = useAppStore((state) => state.setAspectRatio);
   const setUploadedImages = useAppStore((state) => state.setUploadedImages);
   const loadVideoCapabilities = useAppStore((state) => state.loadVideoCapabilities);
+  const videoCapabilities = useAppStore((state) => state.videoCapabilities);
+  const selectedModel = useAppStore((state) => state.selectedModel);
   const seedanceReferenceVideo = useAppStore((state) => state.seedanceReferenceVideo);
   const shots = data.shots || [];
   const activeShot = shots.find((shot) => shot.id === data.activeShotId) || shots[0] || null;
+  const storyboardVideoModel = isSeedanceModel(selectedModel) ? selectedModel : 'seedance-2.0';
+  const storyboardVideoCapabilities = getVideoModelCapabilities(
+    videoCapabilities,
+    storyboardVideoModel,
+  );
+  const minVideoDuration = Number(storyboardVideoCapabilities?.min_duration_seconds) || 4;
+  const maxVideoDuration = Number(storyboardVideoCapabilities?.max_duration_seconds) || 15;
 
   const selectShot = (shotId) => updateNodeData(id, { activeShotId: shotId });
 
@@ -501,7 +511,7 @@ export function StoryboardNode({ id, data }) {
 
     try {
       const capabilities = await loadVideoCapabilities();
-      if (!isUsableVideoCapabilities(capabilities)) {
+      if (!isUsableVideoCapabilities(capabilities, storyboardVideoModel)) {
         const failedDraft = {
           ...draft,
           ok: false,
@@ -546,7 +556,7 @@ export function StoryboardNode({ id, data }) {
         ? 'reference_video'
         : (resolved.dataUrls.length > 0 ? 'reference_image' : 'auto');
       const compiledRequest = createImmutableGenerationRequest({
-        model: 'seedance-2.0',
+        model: storyboardVideoModel,
         prompt: draft.prompt,
         duration: draft.duration,
         resolution: videoResolution,
@@ -660,7 +670,7 @@ export function StoryboardNode({ id, data }) {
                 </select>
               </Field>
               <Field label="时长">
-                <input type="number" min={SEEDANCE_MIN_DURATION_SECONDS} max="15" value={activeShot.duration || 5} onChange={(event) => updateShot(activeShot.id, { duration: Number(event.target.value) })} />
+                <input type="number" min={minVideoDuration} max={maxVideoDuration} value={activeShot.duration || 5} onChange={(event) => updateShot(activeShot.id, { duration: Number(event.target.value) })} />
               </Field>
             </div>
             <Field label="运镜">

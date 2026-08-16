@@ -26,12 +26,16 @@ test('AgentChatInput safely exports selected canvas images', () => {
   assert.match(source, /return safeCanvasToDataUrl\(activeObj,\s*\{\s*format: 'jpeg',\s*quality: 0\.85,\s*multiplier: 1,\s*\}\);/);
 });
 
-test('AgentChatInput exposes GPT Image 2.0 as a generation model option', () => {
-  assert.match(source, /<option value="gpt-image-2">GPT Image 2\.0<\/option>/);
+test('AgentChatInput renders only server-advertised image models', () => {
+  assert.match(source, /imageModels\.map\(\(model\) =>/);
+  assert.match(source, /<option key=\{model\.id\} value=\{model\.id\}>\{model\.label\}<\/option>/);
+  assert.doesNotMatch(source, /<option value="nano-banana-pro">/);
 });
 
-test('AgentChatInput exposes follow-model aspect ratio as the first option', () => {
-  assert.match(source, /const ratios = \[\s*\{ value: 'auto', label: '跟随模型' \}/);
+test('AgentChatInput derives aspect ratios from validated model capabilities', () => {
+  assert.match(source, /selectedImageModel\?\.aspectRatios/);
+  assert.match(source, /activeVideoCapabilities\?\.aspect_ratios/);
+  assert.match(source, /value === 'auto' \? '跟随模型' : value/);
   assert.match(source, /<option key=\{ratio\.value\} value=\{ratio\.value\}>\{ratio\.label\}<\/option>/);
 });
 
@@ -44,10 +48,16 @@ test('AgentChatInput adapts its prompt language to narrative video work', () => 
 });
 
 test('AgentChatInput blocks unavailable Seedance submissions', () => {
-  assert.match(source, /const supportsVideoCapabilities = typeof loadVideoCapabilities === 'function'/);
-  assert.match(source, /const seedanceEnabled = !supportsVideoCapabilities \|\| videoCapabilities\?\.enabled === true/);
-  assert.match(source, /if \(supportsVideoCapabilities\) void loadVideoCapabilities\(\)/);
-  assert.match(source, /const seedanceUnavailable = isSeedanceModel\(selectedModel\) && !seedanceEnabled/);
-  assert.match(source, /if \(!seedanceEnabled\)/);
-  assert.match(source, /sendButtonState\.disabled \|\| seedanceUnavailable/);
+  assert.match(source, /const activeSeedanceEnabled = isUsableVideoCapabilities\(videoCapabilities, selectedModel\)/);
+  assert.match(source, /void loadVideoCapabilities\(\)/);
+  assert.match(source, /const seedanceUnavailable = isSeedanceModel\(selectedModel\) && !activeSeedanceEnabled/);
+  assert.match(source, /if \(!activeSeedanceEnabled\)/);
+  assert.match(source, /sendButtonState\.disabled \|\| seedanceUnavailable \|\| imageUnavailable \|\| canvasDraftBlocked/);
+});
+
+test('AgentChatInput blocks stale canvas requests and clears a valid draft after send', () => {
+  assert.match(source, /compareGenerationRequest/);
+  assert.match(source, /markGenerationDraftStale/);
+  assert.match(source, /canvasDraftBlocked/);
+  assert.match(source, /clearGenerationDraft\(\)/);
 });

@@ -6,6 +6,7 @@ import {
   createGenerationRequestDto,
   createImmutableGenerationRequest,
   createReferenceSignature,
+  getVideoModelCapabilities,
   isUsableVideoCapabilities,
 } from './canvasGenerationDraft.js';
 
@@ -18,6 +19,56 @@ const capabilities = {
   aspect_ratios: ['16:9', '9:16'],
   max_reference_images: 9,
 };
+
+const multiModelCapabilities = {
+  ...capabilities,
+  model: 'seedance-2.0',
+  models: [
+    {
+      id: 'seedance-2.0',
+      label: 'Seedance 2.0',
+      min_duration_seconds: 4,
+      max_duration_seconds: 15,
+      default_resolution: '720p',
+      resolution_credits_per_second: { '720p': 250, '1080p': 300, '4k': 600 },
+      aspect_ratios: ['16:9', '9:16'],
+      max_reference_images: 9,
+      supports_reference_video: true,
+      max_reference_video_duration_seconds: 15,
+    },
+    {
+      id: 'seedance-2.5',
+      label: 'Seedance 2.5',
+      min_duration_seconds: 2,
+      max_duration_seconds: 30,
+      default_resolution: '720p',
+      resolution_credits_per_second: { '720p': 275, '1080p': 330, '4k': 660 },
+      aspect_ratios: ['16:9', '9:16'],
+      max_reference_images: 9,
+      supports_reference_video: true,
+      max_reference_video_duration_seconds: 30,
+    },
+  ],
+};
+
+test('selects model-specific Seedance 2.5 limits and pricing', () => {
+  const selected = getVideoModelCapabilities(multiModelCapabilities, 'seedance-2.5');
+  assert.equal(selected.max_duration_seconds, 30);
+  assert.equal(isUsableVideoCapabilities(multiModelCapabilities, 'seedance-2.5'), true);
+
+  const request = createGenerationRequestDto({
+    model: 'seedance-2.5',
+    prompt: '连续产品运镜',
+    duration: 30,
+    resolution: '1080p',
+    aspectRatio: '16:9',
+    frameMode: 'standard',
+    capabilities: multiModelCapabilities,
+  });
+  assert.equal(request.duration, 30);
+  assert.equal(request.creditsPerSecond, 330);
+  assert.equal(request.estimatedCredits, 9900);
+});
 
 test('creates a normalized immutable request DTO from server capabilities', () => {
   const compiled = createImmutableGenerationRequest({

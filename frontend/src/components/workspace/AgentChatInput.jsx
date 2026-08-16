@@ -21,6 +21,8 @@ import {
   createGenerationRequestDto,
   createReferenceSignature,
   createReferenceVideoSignature,
+  getAvailableVideoModels,
+  getVideoModelCapabilities,
   isUsableVideoCapabilities,
 } from '../../lib/canvasGenerationDraft.js';
 import { getImageCapabilityModel } from '../../lib/imageGenerationCapabilities.js';
@@ -142,11 +144,14 @@ export default function AgentChatInput() {
   const inputPlaceholder = storyMode
     ? '先在分镜表编译镜头，再检查并发送 Seedance 请求'
     : (agentMode ? '描述需要细化的图面问题、标注或空间关系' : '输入分析图生成要求');
-  const seedanceEnabled = isUsableVideoCapabilities(videoCapabilities);
-  const seedanceMinDuration = Number(videoCapabilities?.min_duration_seconds);
-  const seedanceMaxDuration = Number(videoCapabilities?.max_duration_seconds);
-  const capabilityPricing = seedanceEnabled
-    ? videoCapabilities.resolution_credits_per_second
+  const seedanceModels = getAvailableVideoModels(videoCapabilities);
+  const activeVideoCapabilities = getVideoModelCapabilities(videoCapabilities, selectedModel);
+  const seedanceEnabled = seedanceModels.length > 0;
+  const activeSeedanceEnabled = isUsableVideoCapabilities(videoCapabilities, selectedModel);
+  const seedanceMinDuration = Number(activeVideoCapabilities?.min_duration_seconds);
+  const seedanceMaxDuration = Number(activeVideoCapabilities?.max_duration_seconds);
+  const capabilityPricing = activeSeedanceEnabled
+    ? activeVideoCapabilities.resolution_credits_per_second
     : null;
   const seedanceResolutionOptions = capabilityPricing
     ? Object.entries(capabilityPricing).map(([value, creditsPerSecond]) => ({
@@ -156,8 +161,9 @@ export default function AgentChatInput() {
     }))
     : [];
   const selectedCreditsPerSecond = capabilityPricing?.[videoResolution];
-  const seedanceUnavailable = isSeedanceModel(selectedModel) && !seedanceEnabled;
-  const supportsReferenceVideo = seedanceEnabled && videoCapabilities?.supports_reference_video === true;
+  const seedanceUnavailable = isSeedanceModel(selectedModel) && !activeSeedanceEnabled;
+  const supportsReferenceVideo = activeSeedanceEnabled
+    && activeVideoCapabilities?.supports_reference_video === true;
   const seedanceVideoModeOptions = supportsReferenceVideo
     ? SEEDANCE_VIDEO_MODE_OPTIONS
     : SEEDANCE_VIDEO_MODE_OPTIONS.filter((option) => option.value !== 'reference_video');
@@ -171,7 +177,7 @@ export default function AgentChatInput() {
     [uploadedImages],
   );
   const liveDraftRequest = useMemo(() => {
-    if (!generationDraft?.request || !seedanceEnabled) return null;
+    if (!generationDraft?.request || !activeSeedanceEnabled) return null;
     return createGenerationRequestDto({
       model: selectedModel,
       prompt: chatInput,
@@ -191,7 +197,7 @@ export default function AgentChatInput() {
     generationDraft?.request,
     referenceSignature,
     seedanceReferenceVideo,
-    seedanceEnabled,
+    activeSeedanceEnabled,
     selectedModel,
     uploadedImages.length,
     videoCapabilities,
@@ -307,12 +313,12 @@ export default function AgentChatInput() {
     }
 
     if (isSeedanceModel(selectedModel)) {
-      if (!seedanceEnabled) {
+      if (!activeSeedanceEnabled) {
         toast.error(videoCapabilities?.disabled_reason || 'Seedance 服务当前不可用');
         return;
       }
-      if (referenceImages.length > Number(videoCapabilities.max_reference_images)) {
-        toast.error(`Seedance 当前最多支持 ${videoCapabilities.max_reference_images} 张参考图`);
+      if (referenceImages.length > Number(activeVideoCapabilities.max_reference_images)) {
+        toast.error(`Seedance 当前最多支持 ${activeVideoCapabilities.max_reference_images} 张参考图`);
         return;
       }
       if (videoFrameMode === 'reference_video' && !seedanceReferenceVideo?.video_url) {
@@ -405,7 +411,10 @@ export default function AgentChatInput() {
     let toastId;
     try {
       validateSeedanceReferenceVideoFile(file);
-      const durationSeconds = await readSeedanceReferenceVideoDuration(file);
+      const durationSeconds = await readSeedanceReferenceVideoDuration(
+        file,
+        activeVideoCapabilities?.max_reference_video_duration_seconds,
+      );
       toastId = toast.loading('正在上传参考视频...');
       const uploaded = await uploadSeedanceReferenceVideo(file, durationSeconds);
       if (uploaded) {
@@ -427,7 +436,9 @@ export default function AgentChatInput() {
   };
 
   const ratioValues = isSeedanceModel(selectedModel)
-    ? (Array.isArray(videoCapabilities?.aspect_ratios) ? videoCapabilities.aspect_ratios : [])
+    ? (Array.isArray(activeVideoCapabilities?.aspect_ratios)
+      ? activeVideoCapabilities.aspect_ratios
+      : [])
     : (selectedImageModel?.aspectRatios || ['auto']);
   const ratios = ratioValues.map((value) => ({
     value,
@@ -459,9 +470,16 @@ export default function AgentChatInput() {
           {imageModels.map((model) => (
             <option key={model.id} value={model.id}>{model.label}</option>
           ))}
-          <option value="seedance-2.0" disabled={!seedanceEnabled}>
-            {seedanceEnabled ? 'Seedance 2.0 视频' : 'Seedance 视频（暂不可用）'}
-          </option>
+          {seedanceEnabled ? seedanceModels.map((model) => (
+            <option key={model.id} value={model.id}>{model.label} 视频</option>
+          )) : (
+            <option
+              value={isSeedanceModel(selectedModel) ? selectedModel : 'seedance-2.0'}
+              disabled
+            >
+              Seedance 视频（暂不可用）
+            </option>
+          )}
         </select>
 
         {imageCapabilities && imageCapabilities.enabled !== true && !isSeedanceModel(selectedModel) ? (
@@ -483,7 +501,7 @@ export default function AgentChatInput() {
           {ratios.map((ratio) => <option key={ratio.value} value={ratio.value}>{ratio.label}</option>)}
         </select>
 
-        {isSeedanceModel(selectedModel) && seedanceEnabled && (
+        {isSeedanceModel(selectedModel) && activeSeedanceEnabled && (
           <>
             <label className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-white/60" style={{ background: 'var(--surface-2)', border: '1px solid var(--border-subtle)' }}>
               <span>时长</span>
@@ -559,7 +577,7 @@ export default function AgentChatInput() {
             </label>
           </>
         )}
-        {isSeedanceModel(selectedModel) && !seedanceEnabled && (
+        {isSeedanceModel(selectedModel) && !activeSeedanceEnabled && (
           <button
             type="button"
             className="text-[11px] text-amber-300/70 underline decoration-amber-300/20 underline-offset-2"
@@ -641,7 +659,7 @@ export default function AgentChatInput() {
               onClick={() => referenceVideoInputRef.current?.click()}
               disabled={isLoading}
               className="rounded-lg p-1.5 transition hover:bg-white/10 disabled:opacity-30"
-              title="上传参考视频（最长15秒，最大24MB）"
+              title={`上传参考视频（最长${activeVideoCapabilities.max_reference_video_duration_seconds}秒，最大24MB）`}
               aria-label="上传参考视频"
             >
               {isSeedanceReferenceVideoUploading

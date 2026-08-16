@@ -31,6 +31,7 @@ import {
 
 test('isSeedanceModel detects the Seedance video option only', () => {
   assert.equal(isSeedanceModel('seedance-2.0'), true);
+  assert.equal(isSeedanceModel('seedance-2.5'), true);
   assert.equal(isSeedanceModel('nano-banana-2'), false);
 });
 

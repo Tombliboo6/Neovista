@@ -1,4 +1,5 @@
 export const SEEDANCE_MODEL_ID = 'seedance-2.0';
+export const SEEDANCE_MODEL_IDS = Object.freeze(['seedance-2.0', 'seedance-2.5']);
 export const SEEDANCE_MIN_DURATION_SECONDS = 4;
 export const SEEDANCE_MAX_DURATION_SECONDS = 15;
 export const DEFAULT_SEEDANCE_RESOLUTION = '720p';
@@ -33,7 +34,7 @@ export const SEEDANCE_VIDEO_MODE_OPTIONS = [
 ];
 
 export function isSeedanceModel(model) {
-  return model === SEEDANCE_MODEL_ID;
+  return SEEDANCE_MODEL_IDS.includes(String(model || '').trim().toLowerCase());
 }
 
 export function normalizeVideoDurationSeconds(value) {

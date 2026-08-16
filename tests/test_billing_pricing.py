@@ -32,16 +32,30 @@ class BillingPricingTest(unittest.TestCase):
         self.assertEqual(calculate_generation_cost("4K", 2), 180)
 
     def test_seedance_video_pricing_uses_resolution_per_second_rates(self):
-        self.assertEqual(calculate_video_generation_cost(5, "seedance-2.0", "480p"), 1000)
         self.assertEqual(calculate_video_generation_cost(5, "seedance-2.0", "720p"), 1250)
         self.assertEqual(calculate_video_generation_cost(5, "seedance-2.0", "1080p"), 1500)
+        self.assertEqual(calculate_video_generation_cost(5, "seedance-2.0", "4K"), 3000)
 
     def test_seedance_video_pricing_defaults_to_720p(self):
         self.assertEqual(calculate_video_generation_cost(5, "seedance-2.0"), 1250)
 
+    def test_seedance_25_uses_its_model_specific_duration_and_pricing(self):
+        self.assertEqual(calculate_video_generation_cost(2, "seedance-2.5", "720p"), 550)
+        self.assertEqual(calculate_video_generation_cost(30, "seedance-2.5", "1080p"), 9900)
+        with self.assertRaisesRegex(ValueError, "不能超过 30 秒"):
+            calculate_video_generation_cost(31, "seedance-2.5", "720p")
+
+    def test_seedance_20_keeps_its_existing_duration_limit(self):
+        with self.assertRaisesRegex(ValueError, "不能少于 4 秒"):
+            calculate_video_generation_cost(2, "seedance-2.0", "720p")
+        with self.assertRaisesRegex(ValueError, "不能超过 15 秒"):
+            calculate_video_generation_cost(16, "seedance-2.0", "720p")
+
     def test_seedance_video_pricing_rejects_unsupported_resolution(self):
-        with self.assertRaisesRegex(ValueError, "不支持的视频清晰度"):
-            calculate_video_generation_cost(5, "seedance-2.0", "2K")
+        for resolution in ("480p", "2K"):
+            with self.subTest(resolution=resolution):
+                with self.assertRaisesRegex(ValueError, "不支持的视频清晰度"):
+                    calculate_video_generation_cost(5, "seedance-2.0", resolution)
 
 
 if __name__ == "__main__":

@@ -33,14 +33,28 @@ const stableSerialize = (value) => {
   return JSON.stringify(value);
 };
 
-export function isUsableVideoCapabilities(capabilities) {
+export function getVideoModelCapabilities(capabilities, model = null) {
+  if (!capabilities || typeof capabilities !== 'object') return null;
+  const normalizedModel = normalizeText(model || capabilities.model || SEEDANCE_REQUEST_MODEL).toLowerCase();
+  if (Array.isArray(capabilities.models) && capabilities.models.length > 0) {
+    return capabilities.models.find((candidate) => (
+      normalizeText(candidate?.id).toLowerCase() === normalizedModel
+    )) || null;
+  }
+  const rootModel = normalizeText(capabilities.model || SEEDANCE_REQUEST_MODEL).toLowerCase();
+  return normalizedModel === rootModel ? capabilities : null;
+}
+
+export function isUsableVideoCapabilities(capabilities, model = null) {
   if (capabilities?.enabled !== true) return false;
-  const min = Number(capabilities.min_duration_seconds);
-  const max = Number(capabilities.max_duration_seconds);
-  const pricing = capabilities.resolution_credits_per_second;
-  const defaultResolution = normalizeText(capabilities.default_resolution).toLowerCase();
-  const aspectRatios = capabilities.aspect_ratios;
-  const maxReferenceImages = Number(capabilities.max_reference_images);
+  const modelCapabilities = getVideoModelCapabilities(capabilities, model);
+  if (!modelCapabilities) return false;
+  const min = Number(modelCapabilities.min_duration_seconds);
+  const max = Number(modelCapabilities.max_duration_seconds);
+  const pricing = modelCapabilities.resolution_credits_per_second;
+  const defaultResolution = normalizeText(modelCapabilities.default_resolution).toLowerCase();
+  const aspectRatios = modelCapabilities.aspect_ratios;
+  const maxReferenceImages = Number(modelCapabilities.max_reference_images);
   return Number.isFinite(min)
     && Number.isFinite(max)
     && min > 0
@@ -57,20 +71,38 @@ export function isUsableVideoCapabilities(capabilities) {
     && maxReferenceImages >= 0;
 }
 
-export function normalizeDraftDuration(value, capabilities) {
-  if (!isUsableVideoCapabilities(capabilities)) return null;
-  const min = Number(capabilities.min_duration_seconds);
-  const max = Number(capabilities.max_duration_seconds);
+export function getAvailableVideoModels(capabilities) {
+  if (capabilities?.enabled !== true) return [];
+  if (Array.isArray(capabilities.models) && capabilities.models.length > 0) {
+    return capabilities.models.filter((model) => (
+      normalizeText(model?.id).length > 0
+      && isUsableVideoCapabilities(capabilities, model.id)
+    ));
+  }
+  if (!isUsableVideoCapabilities(capabilities)) return [];
+  return [{
+    ...capabilities,
+    id: normalizeText(capabilities.model || SEEDANCE_REQUEST_MODEL),
+    label: 'Seedance 2.0',
+  }];
+}
+
+export function normalizeDraftDuration(value, capabilities, model = null) {
+  if (!isUsableVideoCapabilities(capabilities, model)) return null;
+  const modelCapabilities = getVideoModelCapabilities(capabilities, model);
+  const min = Number(modelCapabilities.min_duration_seconds);
+  const max = Number(modelCapabilities.max_duration_seconds);
   const parsed = Number.parseInt(String(value ?? ''), 10);
   return Math.min(max, Math.max(min, Number.isFinite(parsed) ? parsed : min));
 }
 
-export function normalizeDraftResolution(value, capabilities) {
-  if (!isUsableVideoCapabilities(capabilities)) return null;
-  const pricing = capabilities.resolution_credits_per_second;
+export function normalizeDraftResolution(value, capabilities, model = null) {
+  if (!isUsableVideoCapabilities(capabilities, model)) return null;
+  const modelCapabilities = getVideoModelCapabilities(capabilities, model);
+  const pricing = modelCapabilities.resolution_credits_per_second;
   const normalized = normalizeText(value).toLowerCase();
   if (Object.prototype.hasOwnProperty.call(pricing, normalized)) return normalized;
-  const serverDefault = normalizeText(capabilities.default_resolution).toLowerCase();
+  const serverDefault = normalizeText(modelCapabilities.default_resolution).toLowerCase();
   if (Object.prototype.hasOwnProperty.call(pricing, serverDefault)) return serverDefault;
   return Object.keys(pricing)[0] || null;
 }
@@ -105,6 +137,7 @@ export function createGenerationRequestDto({
   referenceVideoSignature = null,
   capabilities,
 }) {
+  const normalizedModel = normalizeText(model) || SEEDANCE_REQUEST_MODEL;
   const count = Number.isInteger(referenceCount)
     ? referenceCount
     : (Array.isArray(referenceImages) ? referenceImages.length : 0);
@@ -113,13 +146,14 @@ export function createGenerationRequestDto({
     count,
     Boolean(hasReferenceVideo),
   );
-  const normalizedDuration = normalizeDraftDuration(duration, capabilities);
-  const normalizedResolution = normalizeDraftResolution(resolution, capabilities);
+  const modelCapabilities = getVideoModelCapabilities(capabilities, normalizedModel);
+  const normalizedDuration = normalizeDraftDuration(duration, capabilities, normalizedModel);
+  const normalizedResolution = normalizeDraftResolution(resolution, capabilities, normalizedModel);
   const creditsPerSecond = normalizedResolution
-    ? Number(capabilities?.resolution_credits_per_second?.[normalizedResolution])
+    ? Number(modelCapabilities?.resolution_credits_per_second?.[normalizedResolution])
     : null;
   const dto = {
-    model: normalizeText(model) || SEEDANCE_REQUEST_MODEL,
+    model: normalizedModel,
     prompt: normalizeText(prompt),
     duration: normalizedDuration,
     resolution: normalizedResolution,
