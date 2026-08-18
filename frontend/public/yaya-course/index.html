@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AIGC课程第一节学生课件，从课程简介、AI发展背景、鸭鸭项目走到最新模型与完整工作流。">
+  <meta name="robots" content="noindex, nofollow">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="AIGC课程第一节｜学生课件">
+  <meta property="og:description" content="看懂工具，走通流程，找到自己愿意先试的位置。">
+  <meta property="og:image" content="https://neovista.cn/yaya-course/assets/ip/cover-fantuan.png">
+  <title>AIGC课程第一节｜学生课件</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css?v=20260818-3">
+  <script src="course-data.js?v=20260818-3" defer></script>
+  <script src="app.js?v=20260818-3" defer></script>
+</head>
+<body>
+  <main class="app">
+    <div class="deck" id="deck" aria-live="polite">
+      <section class="loading-slide" id="loadingSlide">
+        <span>正在载入课堂内容</span>
+      </section>
+    </div>
+
+    <nav class="controls" aria-label="页面控制">
+      <div class="control-group">
+        <button class="ctrl icon-button" id="prevBtn" type="button" aria-label="上一页">←</button>
+        <button class="ctrl icon-button" id="nextBtn" type="button" aria-label="下一页">→</button>
+        <button class="ctrl" id="menuBtn" type="button">目录</button>
+        <button class="ctrl" id="fullBtn" type="button">全屏</button>
+      </div>
+      <div class="progress-wrap" aria-hidden="true"><div class="progress-bar" id="progressBar"></div></div>
+      <div class="counter" id="counter">00 / 00</div>
+    </nav>
+
+    <aside class="menu-panel" id="menuPanel" aria-hidden="true">
+      <div class="menu-head">
+        <div>
+          <span>AIGC COURSE · SESSION 01</span>
+          <h2>课程目录</h2>
+          <p>按内容主题快速跳转</p>
+        </div>
+        <button class="ctrl" id="closeMenuBtn" type="button">关闭 ESC</button>
+      </div>
+      <div class="menu-list" id="menuList"></div>
+    </aside>
+
+    <aside class="source-panel" id="sourcePanel" aria-hidden="true">
+      <div class="source-head">
+        <div><span>资料核对至 2026.08.18</span><h2 id="sourceTitle">资料来源</h2></div>
+        <button class="ctrl" id="closeSourceBtn" type="button">关闭 ESC</button>
+      </div>
+      <div class="source-list" id="sourceList"></div>
+      <p>模型与岗位页面会继续更新。课堂使用的是本次备课时点的公开信息。</p>
+    </aside>
+  </main>
+
+  <noscript>需要启用 JavaScript 才能载入课堂内容。</noscript>
+</body>
+</html>
