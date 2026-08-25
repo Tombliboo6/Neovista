@@ -1,0 +1,114 @@
+:root {
+  --deck-nav-navy: #2b4c68;
+  --deck-nav-blue: #45657d;
+  --deck-nav-yellow: #f2c84b;
+  --deck-nav-paper: #fffaf1;
+}
+
+html,
+body {
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  background: #dce7ec !important;
+}
+
+#deck-stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+#deck-canvas {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  background: #f7f2e8;
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.38);
+  transform-origin: center center;
+}
+
+#deck-hint {
+  position: fixed;
+  left: 22px;
+  bottom: 22px;
+  z-index: 1000;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(43, 76, 104, 0.86);
+  color: rgba(255, 250, 241, 0.8);
+  font: 500 13px/1.3 "Microsoft YaHei", sans-serif;
+}
+
+#deck-controls {
+  position: fixed;
+  right: 22px;
+  bottom: 20px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  background: rgba(43, 76, 104, 0.94);
+  color: var(--deck-nav-paper);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(12px);
+}
+
+#deck-controls button {
+  height: 42px;
+  margin: 0;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--deck-nav-blue);
+  color: var(--deck-nav-paper);
+  font: 800 15px/1 "Microsoft YaHei", sans-serif;
+  cursor: pointer;
+}
+
+#deck-controls button:hover {
+  background: #4a7fa8;
+}
+
+#deck-controls button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+#deck-next {
+  background: var(--deck-nav-yellow) !important;
+  color: var(--deck-nav-navy) !important;
+}
+
+#deck-next:hover {
+  background: #ffd968 !important;
+}
+
+#deck-counter {
+  min-width: 68px;
+  text-align: center;
+  font: 900 15px/1 "Microsoft YaHei", sans-serif;
+  letter-spacing: 0.08em;
+}
+
+@media (max-width: 760px) {
+  #deck-hint {
+    display: none;
+  }
+
+  #deck-controls {
+    right: 10px;
+    bottom: 10px;
+  }
+
+  #deck-controls button {
+    padding: 0 12px;
+  }
+}

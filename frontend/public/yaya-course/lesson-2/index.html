@@ -1,0 +1,1259 @@
+<!doctype html>
+<html lang="zh-CN" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="鸭鸭特工队 AIGC 第2节课完整网页课件。" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>鸭鸭特工队 AIGC 第2节课</title>
+    <link rel="icon" href="data:," />
+    <script src="vendor/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Microsoft YaHei";
+        src: local("Microsoft YaHei");
+      }
+      @font-face {
+        font-family: "SimHei";
+        src: local("SimHei");
+      }
+      :root {
+        --paper: #f7f2e8;
+        --paper-2: #e9e3d8;
+        --navy: #2b4c68;
+        --navy-2: #45657d;
+        --blue: #4a7fa8;
+        --yellow: #f2c84b;
+        --yellow-2: #e6ad24;
+        --red: #d85844;
+        --muted: #71818c;
+        --white: #fffaf4;
+        --line: rgba(43, 76, 104, 0.18);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--paper);
+        color: var(--navy);
+        font-family: "Microsoft YaHei", "SimHei", sans-serif;
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 20;
+        opacity: 0.28;
+        background-image:
+          linear-gradient(rgba(20, 41, 66, 0.024) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(20, 41, 66, 0.024) 1px, transparent 1px);
+        background-size: 36px 36px;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      .clip {
+        position: absolute;
+        inset: 0;
+      }
+      .seek-marker {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+      }
+      .page {
+        position: absolute;
+        inset: 0;
+        padding: 72px 94px 70px;
+      }
+      .page-no {
+        position: absolute;
+        top: 62px;
+        right: 82px;
+        font-size: 24px;
+        font-weight: 900;
+        letter-spacing: 0.16em;
+      }
+      .kicker {
+        font-size: 25px;
+        font-weight: 900;
+        letter-spacing: 0.12em;
+        color: var(--blue);
+      }
+      .headline {
+        margin-top: 16px;
+        max-width: 1510px;
+        font-size: 62px;
+        line-height: 1.18;
+        letter-spacing: -0.035em;
+        font-weight: 900;
+      }
+      .section-title {
+        font-size: 76px;
+        line-height: 1.08;
+        letter-spacing: -0.045em;
+        font-weight: 900;
+        color: var(--navy);
+      }
+      .rule {
+        width: 78px;
+        height: 7px;
+        margin-top: 22px;
+        background: var(--yellow);
+      }
+      .footer-note {
+        position: absolute;
+        left: 94px;
+        right: 94px;
+        bottom: 50px;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .footer-note::before {
+        content: "";
+        width: 58px;
+        height: 2px;
+        background: currentColor;
+      }
+
+      /* P01 */
+      #p01 {
+        background: #e7f0f4;
+        color: var(--navy);
+      }
+      #p01::before {
+        content: "";
+        position: absolute;
+        left: -130px;
+        top: -210px;
+        width: 760px;
+        height: 760px;
+        border-radius: 50%;
+        background: rgba(242, 200, 75, 0.2);
+      }
+      #p01::after {
+        content: "";
+        position: absolute;
+        left: 82px;
+        bottom: 68px;
+        width: 760px;
+        height: 3px;
+        background: rgba(74, 127, 168, 0.34);
+      }
+      .cover-copy {
+        position: absolute;
+        left: 102px;
+        top: 84px;
+        bottom: 94px;
+        width: 1020px;
+        z-index: 3;
+        display: flex;
+        flex-direction: column;
+      }
+      .cover-kicker {
+        font-size: 24px;
+        font-weight: 900;
+        letter-spacing: 0.15em;
+        color: var(--blue);
+      }
+      .cover-title {
+        margin-top: 112px;
+        width: 940px;
+        font-size: 112px;
+        line-height: 1.02;
+        letter-spacing: -0.065em;
+        font-weight: 900;
+      }
+      .cover-title span {
+        display: block;
+        color: var(--blue);
+      }
+      .cover-question {
+        margin-top: 36px;
+        width: 820px;
+        font-size: 36px;
+        line-height: 1.5;
+        color: var(--navy-2);
+        font-weight: 700;
+      }
+      .cover-meta {
+        margin-top: auto;
+        width: fit-content;
+        padding: 13px 20px;
+        background: var(--yellow);
+        color: var(--navy);
+        font-size: 22px;
+        font-weight: 900;
+        letter-spacing: 0.05em;
+      }
+      .cover-image {
+        position: absolute;
+        top: 72px;
+        right: 76px;
+        width: 700px;
+        height: 936px;
+        overflow: hidden;
+        border: 8px solid rgba(255, 250, 244, 0.92);
+        border-radius: 38px;
+        box-shadow: 0 22px 54px rgba(43, 76, 104, 0.2);
+        background: var(--paper);
+      }
+      .cover-image img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: 50% 50%;
+      }
+      .cover-ep {
+        position: absolute;
+        right: 104px;
+        bottom: 98px;
+        z-index: 4;
+        padding: 13px 19px;
+        background: rgba(43, 76, 104, 0.9);
+        color: var(--white);
+        border-radius: 8px;
+        font-size: 20px;
+        font-weight: 900;
+        letter-spacing: 0.06em;
+      }
+
+      /* P02 */
+      #p02 {
+        background: var(--paper);
+      }
+      .goal-prompt {
+        margin-top: 16px;
+        font-size: 30px;
+        line-height: 1.3;
+        font-weight: 800;
+        color: var(--navy-2);
+      }
+      .creation-principle {
+        margin-top: 22px;
+        padding: 18px 24px;
+        display: grid;
+        grid-template-columns: auto 1fr;
+        align-items: center;
+        gap: 22px;
+        border-left: 8px solid var(--navy);
+        background: var(--yellow);
+        color: var(--navy);
+        box-shadow: 0 10px 24px rgba(112, 82, 18, 0.14);
+      }
+      .creation-principle strong {
+        font-size: 23px;
+        line-height: 1.2;
+      }
+      .creation-principle span {
+        font-size: 19px;
+        line-height: 1.42;
+        font-weight: 800;
+      }
+      .goal-list {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 28px;
+        margin-top: 28px;
+      }
+      .goal-row {
+        position: relative;
+        min-width: 0;
+        min-height: 430px;
+        padding: 42px 38px 38px;
+        border-radius: 30px;
+        background: var(--white);
+        border: 3px solid rgba(74, 127, 168, 0.22);
+        box-shadow: 0 16px 0 rgba(74, 127, 168, 0.12);
+      }
+      .goal-row:nth-child(2) {
+        transform: translateY(28px);
+      }
+      .goal-row:nth-child(3) {
+        transform: translateY(56px);
+      }
+      .goal-num {
+        font-size: 92px;
+        line-height: 1;
+        font-weight: 900;
+        color: var(--yellow-2);
+      }
+      .goal-copy strong {
+        display: block;
+        margin-top: 42px;
+        font-size: 34px;
+        line-height: 1.38;
+        overflow-wrap: anywhere;
+      }
+      .goal-copy p {
+        display: none;
+      }
+
+      /* P03 */
+      #p03 {
+        background: #edf3f5;
+        color: var(--navy);
+      }
+      .course-parts {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1fr);
+        align-items: center;
+        gap: 28px;
+        margin-top: 96px;
+      }
+      .course-part {
+        position: relative;
+        min-width: 0;
+        min-height: 610px;
+        padding: 64px 58px;
+        border-radius: 42px;
+        overflow: hidden;
+      }
+      .course-part::after {
+        content: "";
+        position: absolute;
+        right: -100px;
+        bottom: -120px;
+        width: 360px;
+        height: 360px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.2);
+      }
+      .course-part.overview {
+        background: var(--blue);
+        color: var(--white);
+        box-shadow: 0 20px 0 rgba(74, 127, 168, 0.2);
+      }
+      .course-part.practice {
+        background: var(--yellow);
+        color: var(--navy);
+        box-shadow: 0 20px 0 rgba(230, 173, 36, 0.22);
+      }
+      .course-part .part-index {
+        display: block;
+        font-size: 118px;
+        line-height: 1;
+        font-weight: 900;
+        opacity: 0.24;
+      }
+      .course-part .part-label {
+        display: block;
+        margin-top: 72px;
+        font-size: 30px;
+        font-weight: 900;
+        letter-spacing: 0.12em;
+      }
+      .course-part h3 {
+        margin-top: 22px;
+        font-size: 76px;
+        line-height: 1.12;
+        letter-spacing: -0.04em;
+        overflow-wrap: anywhere;
+      }
+      .course-arrow {
+        font-size: 86px;
+        line-height: 1;
+        color: var(--blue);
+        font-weight: 900;
+        text-align: center;
+      }
+
+      /* P04 */
+      #p04 {
+        background: var(--paper);
+      }
+      .journey-map {
+        position: relative;
+        height: 770px;
+        margin-top: 20px;
+        overflow: hidden;
+      }
+      .journey-map::before {
+        content: "01 → 05";
+        position: absolute;
+        right: 8px;
+        top: -42px;
+        font-size: 176px;
+        line-height: 1;
+        font-weight: 900;
+        letter-spacing: -9px;
+        color: rgba(74, 127, 168, 0.08);
+      }
+      .journey-path {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .journey-path path {
+        fill: none;
+        stroke: rgba(74, 127, 168, 0.28);
+        stroke-width: 26;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .journey-path .route-highlight {
+        stroke: var(--yellow);
+        stroke-width: 8;
+      }
+      .journey-stage {
+        position: absolute;
+        z-index: 2;
+        width: 286px;
+        min-height: 230px;
+        padding: 30px 28px 26px;
+        border-radius: 32px;
+        background: var(--white);
+        border: 4px solid rgba(74, 127, 168, 0.2);
+        box-shadow:
+          0 18px 0 rgba(74, 127, 168, 0.17),
+          0 30px 46px rgba(43, 76, 104, 0.1);
+      }
+      .journey-stage::after {
+        content: "";
+        position: absolute;
+        left: 32px;
+        right: 32px;
+        bottom: -18px;
+        height: 18px;
+        border-radius: 0 0 20px 20px;
+        background: rgba(74, 127, 168, 0.14);
+      }
+      .journey-stage.s1 {
+        left: 18px;
+        top: 400px;
+      }
+      .journey-stage.s2 {
+        left: 365px;
+        top: 300px;
+      }
+      .journey-stage.s3 {
+        left: 712px;
+        top: 215px;
+        background: #f7e3ad;
+        border-color: rgba(230, 173, 36, 0.28);
+      }
+      .journey-stage.s3::after {
+        background: rgba(230, 173, 36, 0.2);
+      }
+      .journey-stage.s4 {
+        left: 1059px;
+        top: 130px;
+        background: #dcecf4;
+      }
+      .journey-stage.s5 {
+        left: 1406px;
+        top: 46px;
+        background: var(--blue);
+        color: var(--white);
+        border-color: var(--blue);
+        box-shadow:
+          0 18px 0 var(--navy),
+          0 34px 52px rgba(43, 76, 104, 0.22);
+      }
+      .journey-stage.s5::after {
+        background: rgba(43, 76, 104, 0.28);
+      }
+      .journey-no {
+        display: inline-grid;
+        place-items: center;
+        width: 72px;
+        height: 72px;
+        border-radius: 22px;
+        background: var(--yellow);
+        color: var(--navy);
+        font-size: 32px;
+        line-height: 1;
+        font-weight: 900;
+      }
+      .journey-title {
+        margin-top: 28px;
+        font-size: 38px;
+        line-height: 1.05;
+        font-weight: 900;
+        letter-spacing: -1px;
+      }
+      .journey-copy {
+        margin-top: 20px;
+        font-size: 23px;
+        line-height: 1.45;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .journey-stage.s5 .journey-copy {
+        color: rgba(255, 250, 244, 0.78);
+      }
+      .journey-arrow {
+        position: absolute;
+        z-index: 3;
+        right: 12px;
+        top: 278px;
+        width: 104px;
+        height: 104px;
+        border-radius: 50%;
+        background: var(--yellow);
+        color: var(--navy);
+        display: grid;
+        place-items: center;
+        font-size: 58px;
+        font-weight: 900;
+        box-shadow: 0 12px 0 rgba(230, 173, 36, 0.24);
+      }
+
+      .result-chain {
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 24px;
+        margin-top: 42px;
+      }
+      .result-chain::before {
+        content: "";
+        position: absolute;
+        left: 80px;
+        right: 80px;
+        top: 330px;
+        height: 12px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, var(--yellow), var(--blue));
+        opacity: 0.72;
+      }
+      .result-card {
+        position: relative;
+        z-index: 1;
+        min-width: 0;
+        height: 650px;
+        padding: 18px;
+        border: 3px solid rgba(43, 76, 104, 0.14);
+        border-radius: 26px;
+        background: rgba(255, 250, 244, 0.96);
+        box-shadow: 0 20px 42px rgba(43, 76, 104, 0.11);
+      }
+      .result-card:not(:last-child)::after {
+        content: "→";
+        position: absolute;
+        z-index: 5;
+        right: -35px;
+        top: 300px;
+        display: grid;
+        place-items: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: var(--yellow);
+        color: var(--navy);
+        font-size: 29px;
+        font-weight: 900;
+        box-shadow: 0 8px 18px rgba(230, 173, 36, 0.28);
+      }
+      .result-topline {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 46px;
+        padding: 0 4px;
+      }
+      .result-no {
+        display: inline-grid;
+        place-items: center;
+        width: 52px;
+        height: 38px;
+        border-radius: 13px;
+        background: var(--navy);
+        color: var(--white);
+        font-size: 21px;
+        font-weight: 900;
+      }
+      .result-output {
+        color: var(--muted);
+        font-size: 18px;
+        font-weight: 800;
+      }
+      .result-preview {
+        position: relative;
+        height: 350px;
+        margin-top: 10px;
+        overflow: hidden;
+        border-radius: 18px;
+        background: #e8eef1;
+        border: 2px solid rgba(43, 76, 104, 0.1);
+      }
+      .result-preview img {
+        width: 100%;
+        height: 100%;
+        display: block;
+        object-fit: cover;
+      }
+      .result-card.storyboard .result-preview img {
+        object-position: 50% 12%;
+        filter: contrast(1.04);
+      }
+      .result-card.keyframe .result-preview img {
+        object-position: 51% 72%;
+      }
+      .result-card.film {
+        background: var(--blue);
+        border-color: var(--blue);
+        color: var(--white);
+        box-shadow: 0 22px 0 var(--navy), 0 34px 52px rgba(43, 76, 104, 0.2);
+      }
+      .result-card.film .result-output,
+      .result-card.film .result-detail {
+        color: rgba(255, 250, 244, 0.78);
+      }
+      .result-card.film .result-no {
+        background: var(--yellow);
+        color: var(--navy);
+      }
+      .topic-note {
+        position: absolute;
+        inset: 28px 24px 32px;
+        padding: 30px 24px;
+        border-radius: 10px 10px 22px 10px;
+        background: #f7cf58;
+        box-shadow: 0 16px 28px rgba(112, 82, 18, 0.18);
+        transform: rotate(-2deg);
+      }
+      .topic-note::before {
+        content: "选题";
+        display: inline-block;
+        padding: 7px 11px;
+        border-radius: 9px;
+        background: var(--navy);
+        color: var(--white);
+        font-size: 18px;
+        font-weight: 900;
+      }
+      .topic-note strong {
+        display: block;
+        margin-top: 34px;
+        font-size: 30px;
+        line-height: 1.22;
+        color: var(--navy);
+      }
+      .topic-note span {
+        display: block;
+        margin-top: 28px;
+        font-size: 20px;
+        line-height: 1.5;
+        color: #704f16;
+        font-weight: 800;
+      }
+      .script-sheet {
+        position: absolute;
+        inset: 20px;
+        padding: 28px 24px;
+        background: var(--white);
+        border-left: 9px solid var(--yellow);
+        box-shadow: 0 14px 24px rgba(43, 76, 104, 0.12);
+      }
+      .script-sheet b {
+        display: block;
+        color: var(--blue);
+        font-size: 19px;
+      }
+      .script-sheet p {
+        margin: 18px 0 0;
+        padding-top: 14px;
+        border-top: 2px solid #dbe4e8;
+        color: var(--navy);
+        font-size: 18px;
+        line-height: 1.45;
+        font-weight: 750;
+      }
+      .play-mark {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        display: grid;
+        place-items: center;
+        width: 86px;
+        height: 86px;
+        border-radius: 50%;
+        background: rgba(248, 194, 58, 0.95);
+        color: var(--navy);
+        font-size: 42px;
+        line-height: 1;
+        transform: translate(-50%, -50%);
+        box-shadow: 0 12px 28px rgba(43, 76, 104, 0.3);
+      }
+      .result-title {
+        margin-top: 26px;
+        font-size: 35px;
+        line-height: 1.1;
+        font-weight: 900;
+        letter-spacing: -1px;
+      }
+      .result-detail {
+        margin-top: 14px;
+        font-size: 20px;
+        line-height: 1.4;
+        font-weight: 750;
+        color: var(--muted);
+      }
+
+      /* P05 */
+      #p05 {
+        background: var(--paper);
+      }
+      .topic-top {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 390px;
+        gap: 24px;
+        margin-top: 34px;
+      }
+      .six-topics {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        min-width: 0;
+      }
+      .topic {
+        min-width: 0;
+        min-height: 108px;
+        padding: 17px 18px;
+        background: #fffaf1;
+        border-top: 5px solid var(--yellow);
+      }
+      .topic b {
+        display: block;
+        font-size: 17px;
+        color: var(--yellow-2);
+      }
+      .topic strong {
+        display: block;
+        margin-top: 7px;
+        font-size: 23px;
+        line-height: 1.28;
+      }
+      .topic small {
+        display: block;
+        margin-top: 6px;
+        font-size: 17px;
+        color: var(--muted);
+      }
+      .topic-check {
+        padding: 19px 22px;
+        background: var(--navy);
+        color: var(--white);
+      }
+      .topic-check h3 {
+        font-size: 23px;
+        color: var(--yellow);
+      }
+      .topic-check p {
+        margin-top: 18px;
+        font-size: 22px;
+        line-height: 1.55;
+        font-weight: 800;
+      }
+      .topic-check ul {
+        margin-top: 14px;
+        list-style: none;
+        display: grid;
+        gap: 10px;
+      }
+      .topic-check li {
+        font-size: 19px;
+        line-height: 1.35;
+        padding-left: 23px;
+        position: relative;
+      }
+      .topic-check li::before {
+        content: "✓";
+        position: absolute;
+        left: 0;
+        color: var(--yellow);
+        font-weight: 900;
+      }
+      .topic-table {
+        margin-top: 18px;
+        display: grid;
+        grid-template-columns: 150px 1fr 120px 150px 1fr 120px;
+        border-top: 2px solid var(--navy);
+        border-left: 1px solid var(--line);
+      }
+      .topic-table > div {
+        min-height: 48px;
+        padding: 10px 12px;
+        border-right: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        font-size: 17px;
+        line-height: 1.35;
+        display: flex;
+        align-items: center;
+      }
+      .topic-table .th {
+        background: var(--navy);
+        color: var(--white);
+        font-weight: 900;
+      }
+      .topic-table .type {
+        font-weight: 900;
+        color: var(--blue);
+      }
+      .topic-table .dur {
+        font-weight: 900;
+        justify-content: center;
+        color: var(--yellow-2);
+      }
+      .warning-strip {
+        margin-top: 15px;
+        padding: 14px 18px;
+        background: #eadfd2;
+        border-left: 7px solid var(--red);
+        font-size: 19px;
+        font-weight: 800;
+        color: #62382f;
+      }
+    </style>
+    <link rel="stylesheet" href="deck-nav.css?v=20260825-1" />
+    <script src="deck-nav.js?v=20260825-1" defer></script>
+  </head>
+  <body>
+    <script type="application/hyperframes-slideshow+json">
+      {
+        "slides": [
+          {
+            "sceneId": "p01",
+            "notes": "从EP04真实画面进入。先问学生：一条完整的AI短片，是怎么从一句话的选题做出来的？"
+          },
+          {
+            "sceneId": "p02",
+            "notes": "用三个问题说明本节课的学习目标，学生课后应能用自己的话回答。"
+          },
+          {
+            "sceneId": "p03",
+            "notes": "第一部分认识完整流程；第二部分把同一套方法放进鸭鸭EP04真实案例中分析。"
+          },
+          {
+            "sceneId": "p04",
+            "notes": "不要只念步骤，带学生看每一步留下的成果：选题便签、脚本文本、分镜、关键帧和成片。强调前一步的成果就是下一步的输入。"
+          },
+          {
+            "sceneId": "p05",
+            "notes": "先看一个选题小要点，再看六个代表性选题和十二类补充选题。选题要有明确故事线，并能在一到两分钟内讲完。"
+          }
+        ],
+        "slideSequences": []
+      }
+    </script>
+
+    <div
+      id="p01"
+      class="scene"
+      data-composition-id="p01"
+      data-start="0"
+      data-duration="8"
+      data-label="封面"
+      data-width="1920"
+      data-height="1080"
+    >
+      <section
+        id="p01-content"
+        class="clip"
+        data-start="0"
+        data-duration="8"
+        data-track-index="1"
+      >
+        <i id="p01-seek-marker" class="seek-marker"></i>
+        <div class="cover-copy">
+          <div class="cover-kicker">鸭鸭特工队 · 学生共创指导课 / 第二节课</div>
+          <h1 class="cover-title">从创意<span>到成片</span></h1>
+          <p class="cover-question">
+            一条完整的 AI 短片，是怎么从一句话的选题做出来的？
+          </p>
+          <div class="cover-meta">AI 短片完整制作流程</div>
+        </div>
+        <figure class="cover-image">
+          <img src="assets/ep04-cover-v04.webp" alt="EP04饭团醒来查看手机" />
+        </figure>
+        <div class="cover-ep">真实案例 · EP04《一觉醒来，下午没了》</div>
+      </section>
+    </div>
+
+    <div
+      id="p02"
+      class="scene"
+      data-composition-id="p02"
+      data-start="8"
+      data-duration="8"
+      data-label="学习目标"
+      data-width="1920"
+      data-height="1080"
+    >
+      <section
+        id="p02-content"
+        class="clip"
+        data-start="8"
+        data-duration="8"
+        data-track-index="1"
+      >
+        <i id="p02-seek-marker" class="seek-marker"></i>
+        <div class="page">
+          <h2 class="section-title">课程目标</h2>
+          <div class="goal-prompt">学完这节课，你要回答的三个问题</div>
+          <div class="creation-principle">
+            <strong>创作原则｜人先创作，AI再辅助</strong>
+            <span>先由创作者提出选题、表达目标和核心画面，再让 AI 帮助扩展、整理和实现。AI 可以协助推进创作，创作者始终负责确定创作主题、表达目标和核心内容。</span>
+          </div>
+          <div class="goal-list">
+            <article class="goal-row">
+              <div class="goal-num">01</div>
+              <div class="goal-copy">
+                <strong
+                  >一条 AI 动画短片，从想法到成片，要经过哪些步骤？</strong
+                >
+              </div>
+            </article>
+            <article class="goal-row">
+              <div class="goal-num">02</div>
+              <div class="goal-copy">
+                <strong
+                  >故事、脚本、文字分镜、关键帧和视频提示词，分别解决什么问题？</strong
+                >
+              </div>
+            </article>
+            <article class="goal-row">
+              <div class="goal-num">03</div>
+              <div class="goal-copy">
+                <strong
+                  >如何根据分镜制作关键帧、编写视频提示词？</strong
+                >
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div
+      id="p03"
+      class="scene"
+      data-composition-id="p03"
+      data-start="16"
+      data-duration="8"
+      data-label="课程结构"
+      data-width="1920"
+      data-height="1080"
+    >
+      <section
+        id="p03-content"
+        class="clip"
+        data-start="16"
+        data-duration="8"
+        data-track-index="1"
+      >
+        <i id="p03-seek-marker" class="seek-marker"></i>
+        <div class="page">
+          <h2 class="section-title">课程结构</h2>
+          <div class="course-parts">
+            <article class="course-part overview">
+              <span class="part-index">01</span
+              ><span class="part-label">第一部分</span>
+              <h3>流程概述</h3>
+            </article>
+            <div class="course-arrow">→</div>
+            <article class="course-part practice">
+              <span class="part-index">02</span
+              ><span class="part-label">第二部分</span>
+              <h3>实战案例分析</h3>
+            </article>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div
+      id="p04"
+      class="scene"
+      data-composition-id="p04"
+      data-start="24"
+      data-duration="8"
+      data-label="完整流程"
+      data-width="1920"
+      data-height="1080"
+    >
+      <section
+        id="p04-content"
+        class="clip"
+        data-start="24"
+        data-duration="8"
+        data-track-index="1"
+      >
+        <i id="p04-seek-marker" class="seek-marker"></i>
+        <div class="page">
+          <h2 class="section-title">完整流程</h2>
+          <div class="result-chain">
+            <article class="result-card topic-card">
+              <div class="result-topline"><span class="result-no">01</span><span class="result-output">选题</span></div>
+              <div class="result-preview">
+                <div class="topic-note"><strong>暑假一觉睡到下午，还要不要开始？</strong></div>
+              </div>
+              <div class="result-title">想清楚</div>
+              <div class="result-detail">确定主题与故事方向</div>
+            </article>
+            <article class="result-card script-card">
+              <div class="result-topline"><span class="result-no">02</span><span class="result-output">脚本</span></div>
+              <div class="result-preview">
+                <div class="script-sheet"><b>傍晚 · 卧室</b><p>饭团迷迷糊糊醒来，伸翅拿起手机。<br /><br />屏幕显示17:48，她瞬间清醒，猛地坐起。</p></div>
+              </div>
+              <div class="result-title">写清楚</div>
+              <div class="result-detail">明确人物、动作与变化</div>
+            </article>
+            <article class="result-card storyboard">
+              <div class="result-topline"><span class="result-no">03</span><span class="result-output">分镜</span></div>
+              <div class="result-preview"><img src="assets/p04-storyboard.webp" alt="EP04动作分镜" /></div>
+              <div class="result-title">拆成镜头</div>
+              <div class="result-detail">确定景别、机位与动作顺序</div>
+            </article>
+            <article class="result-card keyframe">
+              <div class="result-topline"><span class="result-no">04</span><span class="result-output">关键帧</span></div>
+              <div class="result-preview"><img src="assets/p04-keyframe.webp" alt="EP04关键帧" /></div>
+              <div class="result-title">锁定画面</div>
+              <div class="result-detail">固定角色、场景与起止状态</div>
+            </article>
+            <article class="result-card film">
+              <div class="result-topline"><span class="result-no">05</span><span class="result-output">视频</span></div>
+              <div class="result-preview"><img src="assets/p04-film.webp" alt="EP04成片画面" /><span class="play-mark">▶</span></div>
+              <div class="result-title">生成成片</div>
+              <div class="result-detail">分段生成、剪辑、声音与质检</div>
+            </article>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div
+      id="p05"
+      class="scene"
+      data-composition-id="p05"
+      data-start="32"
+      data-duration="8"
+      data-label="选题"
+      data-width="1920"
+      data-height="1080"
+    >
+      <section
+        id="p05-content"
+        class="clip"
+        data-start="32"
+        data-duration="8"
+        data-track-index="1"
+      >
+        <i id="p05-seek-marker" class="seek-marker"></i>
+        <div class="page">
+          <h2 class="section-title">选题</h2>
+          <div class="topic-top">
+            <div class="six-topics">
+              <div class="topic">
+                <b>01 · 日常故事</b><strong>睡过头后，今天还要不要开始</strong
+                ><small>生活里的小问题</small>
+              </div>
+              <div class="topic">
+                <b>02 · 校园故事</b><strong>考试前发现忘带准考证</strong
+                ><small>熟悉场景里的突发问题</small>
+              </div>
+              <div class="topic">
+                <b>03 · 友情故事</b><strong>两个闹别扭的朋友一起寻找宠物</strong
+                ><small>用一件事推动关系变化</small>
+              </div>
+              <div class="topic">
+                <b>04 · 搞笑故事</b><strong>三个角色争抢最后一个充电口</strong
+                ><small>目标冲突产生笑点</small>
+              </div>
+              <div class="topic">
+                <b>05 · 冒险故事</b><strong>送货机器人冒雨完成任务</strong
+                ><small>目标、阻碍和行动明确</small>
+              </div>
+              <div class="topic">
+                <b>06 · 奇幻故事</b><strong>一把旧伞在雨夜寻找主人</strong
+                ><small>普通物件也能成为主角</small>
+              </div>
+            </div>
+            <aside class="topic-check">
+              <h3>小要点</h3>
+              <p>选题要简单，有人物、有事情、有一点冲突，1—2分钟能够讲完，角色和场景不要太多。</p>
+            </aside>
+          </div>
+          <div class="topic-table">
+            <div class="th">类型</div>
+            <div class="th">一句话例子</div>
+            <div class="th">时长</div>
+            <div class="th">类型</div>
+            <div class="th">一句话例子</div>
+            <div class="th">时长</div>
+            <div class="type">校园日常</div>
+            <div>图书馆闭馆前的最后十分钟</div>
+            <div class="dur">45s</div>
+            <div class="type">微科普</div>
+            <div>咖啡为什么会让人清醒</div>
+            <div class="dur">60s</div>
+            <div class="type">寓言改编</div>
+            <div>乌鸦喝水的现代城市版本</div>
+            <div class="dur">45s</div>
+            <div class="type">物件叙事</div>
+            <div>一把旧伞等待主人回家</div>
+            <div class="dur">60s</div>
+            <div class="type">城市观察</div>
+            <div>凌晨四点的便利店</div>
+            <div class="dur">60s</div>
+            <div class="type">微纪录</div>
+            <div>一份早餐从后厨到窗口</div>
+            <div class="dur">75s</div>
+            <div class="type">角色喜剧</div>
+            <div>三只鸭第一次使用自助打印机</div>
+            <div class="dur">45s</div>
+            <div class="type">自然想象</div>
+            <div>雨滴在城市里的一段旅程</div>
+            <div class="dur">60s</div>
+            <div class="type">历史切片</div>
+            <div>一封旧信穿过百年到达今天</div>
+            <div class="dur">90s</div>
+            <div class="type">声音故事</div>
+            <div>只凭声音辨认宿舍的一天</div>
+            <div class="dur">45s</div>
+            <div class="type">动作练习</div>
+            <div>快递机器人穿过拥挤走廊</div>
+            <div class="dur">30s</div>
+            <div class="type">公益表达</div>
+            <div>被随手关掉的一盏空教室灯</div>
+            <div class="dur">45s</div>
+          </div>
+          <div class="warning-strip">
+            注意项：要有明确的故事线，讲清楚角色遇到了什么问题、采取了什么行动、最后发生了什么变化。人物和场景不要太多，故事要能在1—2分钟内讲完。
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div
+      id="root-clock"
+      data-composition-id="root"
+      data-start="0"
+      data-duration="40"
+      data-label="幻灯片导航时钟"
+      data-width="1"
+      data-height="1"
+      aria-hidden="true"
+      style="
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        opacity: 0;
+        pointer-events: none;
+      "
+    ></div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const sceneTimings = [
+        { id: "p01", start: 0, duration: 8 },
+        { id: "p02", start: 8, duration: 8 },
+        { id: "p03", start: 16, duration: 8 },
+        { id: "p04", start: 24, duration: 8 },
+        { id: "p05", start: 32, duration: 8 },
+      ];
+
+      [
+        ["p01", 0],
+        ["p02", 8],
+        ["p03", 16],
+        ["p04", 24],
+        ["p05", 32],
+      ].forEach(([id, start]) => {
+        const timeline = gsap.timeline({ paused: true });
+        timeline.to(
+          `#${id}-seek-marker`,
+          { x: 1, duration: 8, ease: "none" },
+          start,
+        );
+        if (id === "p01") {
+          timeline.fromTo(
+            "#p01 .cover-image img",
+            { scale: 1 },
+            { scale: 1.018, duration: 8, ease: "none" },
+            0,
+          );
+          timeline.fromTo("#p01 .cover-image", { opacity: 0, scale: 0.975 }, { opacity: 1, scale: 1, duration: 1.25, ease: "power2.out" }, 0);
+          timeline.fromTo("#p01 .cover-copy > *", { opacity: 0, y: 34 }, { opacity: 1, y: 0, duration: 0.72, stagger: 0.13, ease: "power3.out" }, 0.18);
+          timeline.fromTo("#p01 .cover-ep", { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "power2.out" }, 0.72);
+        }
+        if (id === "p02") {
+          timeline.fromTo("#p02 .section-title, #p02 .goal-prompt", { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: 0.68, stagger: 0.12, ease: "power3.out" }, start);
+          timeline.fromTo("#p02 .creation-principle", { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.58, ease: "power2.out" }, start + 0.24);
+          timeline.fromTo("#p02 .goal-row", { opacity: 0, y: 30, scale: 0.985 }, { opacity: 1, y: 0, scale: 1, duration: 0.64, stagger: 0.16, ease: "power2.out" }, start + 0.42);
+        }
+        if (id === "p03") {
+          timeline.fromTo("#p03 .section-title", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.62, ease: "power3.out" }, start);
+          timeline.fromTo("#p03 .course-part", { opacity: 0, y: 34, scale: 0.97 }, { opacity: 1, y: 0, scale: 1, duration: 0.78, stagger: 0.32, ease: "power2.out" }, start + 0.22);
+          timeline.fromTo("#p03 .course-arrow", { opacity: 0, scale: 0.7 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(1.6)" }, start + 0.72);
+        }
+        if (id === "p04") {
+          timeline.fromTo("#p04 .section-title", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.62, ease: "power3.out" }, start);
+          timeline.fromTo("#p04 .result-card", { opacity: 0, y: 34, scale: 0.975 }, { opacity: 1, y: 0, scale: 1, duration: 0.66, stagger: 0.13, ease: "power2.out" }, start + 0.22);
+        }
+        if (id === "p05") {
+          timeline.fromTo("#p05 .section-title", { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.58, ease: "power3.out" }, start);
+          timeline.fromTo("#p05 .topic", { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.52, stagger: 0.09, ease: "power2.out" }, start + 0.16);
+          timeline.fromTo("#p05 .topic-check, #p05 .topic-table, #p05 .warning-strip", { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.62, stagger: 0.14, ease: "power2.out" }, start + 0.46);
+        }
+        window.__timelines[id] = timeline;
+      });
+
+      function updateVisibility(time) {
+        sceneTimings.forEach((scene) => {
+          const element = document.getElementById(scene.id);
+          const active =
+            time >= scene.start && time < scene.start + scene.duration;
+          element.style.visibility = active ? "visible" : "hidden";
+          element.style.pointerEvents = active ? "auto" : "none";
+          element.style.zIndex = active ? "2" : "0";
+        });
+      }
+
+      const rootTimeline = gsap.timeline({
+        paused: true,
+        onUpdate: function () {
+          const time = this.time();
+          updateVisibility(time);
+          sceneTimings.forEach(({ id }) =>
+            window.__timelines[id].time(time, false),
+          );
+        },
+      });
+      rootTimeline.to({}, { duration: 40 });
+      window.__timelines.root = rootTimeline;
+      updateVisibility(0);
+      sceneTimings.forEach(({ id }) => window.__timelines[id].time(0, false));
+
+      const requestedTime = Number.parseFloat(
+        new URLSearchParams(location.search).get("at") || "4",
+      );
+      if (Number.isFinite(requestedTime)) {
+        const targetTime = Math.max(0, Math.min(39.99, requestedTime));
+        const sceneStart = Math.floor(targetTime / 8) * 8;
+        rootTimeline.time(sceneStart, false);
+        rootTimeline.tweenTo(targetTime, { duration: 1.4, ease: "power2.out" });
+      }
+    </script>
+  </body>
+</html>
