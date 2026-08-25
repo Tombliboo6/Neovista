@@ -1,3 +1,5 @@
+import { getVersionedGalleryAssetUrl } from './galleryAssets.js';
+
 export const INITIAL_GALLERY_VISIBLE_COUNT = 16;
 export const GALLERY_BATCH_SIZE = 12;
 export const EAGER_GALLERY_IMAGE_COUNT = 4;
@@ -16,6 +18,20 @@ export function getGalleryCardMediaPresentation() {
 
 export function getPrimaryTemplateImage(images = []) {
   return images.length > 0 ? images[images.length - 1] : null;
+}
+
+export function getTemplatePreviewImage(template = {}) {
+  return getVersionedGalleryAssetUrl(
+    template.thumbnail_image || getPrimaryTemplateImage(template.images || []),
+  );
+}
+
+export function getTemplateCarouselImages(template = {}) {
+  if (template.thumbnail_image) {
+    return [getVersionedGalleryAssetUrl(template.thumbnail_image)];
+  }
+
+  return (template.images || []).map(getVersionedGalleryAssetUrl);
 }
 
 export function getNextVisibleCount(currentCount, totalCount, batchSize = GALLERY_BATCH_SIZE) {

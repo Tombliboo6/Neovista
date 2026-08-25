@@ -27,6 +27,7 @@ test('buildGeneratedImageMessage keeps image and template metadata', () => {
     imageUrl: 'data:image/png;base64,abc123',
     templateName: '测试模版',
     content: '图片已生成！',
+    prompt: '实际发送的分析图提示词',
   });
 
   assert.deepEqual(message, {
@@ -34,6 +35,7 @@ test('buildGeneratedImageMessage keeps image and template metadata', () => {
     content: '图片已生成！',
     imageUrl: 'data:image/png;base64,abc123',
     templateName: '测试模版',
+    prompt: '实际发送的分析图提示词',
   });
 });
 

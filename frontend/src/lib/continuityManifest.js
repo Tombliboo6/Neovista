@@ -1,3 +1,5 @@
+import { MAX_SEEDANCE_PROMPT_CHARS } from './canvasGenerationDraft.js';
+
 const normalizeText = (value) => String(value || '').trim();
 
 const unique = (items) => Array.from(new Set(items.filter(Boolean)));
@@ -86,7 +88,7 @@ export function compileShotGenerationDraft({ storyboardId, shot, nodes = [], edg
     ...characterNodes.map((node) => normalizeText(node.data?.negativePrompt)),
     ...sceneNodes.map((node) => normalizeText(node.data?.negativePrompt)),
   ]);
-  const storyText = normalizeText(storyNodes[0]?.data?.text).slice(0, 800);
+  const storyText = normalizeText(storyNodes[0]?.data?.text);
   const promptSections = [
     '[当前镜头]',
     `标题：${normalizeText(shot?.title) || `镜头 ${shot?.index || ''}`}`,
@@ -101,6 +103,13 @@ export function compileShotGenerationDraft({ storyboardId, shot, nodes = [], edg
     negativeConstraints.length > 0 && `\n[禁止项]\n${negativeConstraints.map((rule) => `- ${rule}`).join('\n')}`,
     '\n严格保持参考图中的角色身份特征与已声明资产一致；不要自行替换角色、服装、道具或场景设定。',
   ].filter(Boolean);
+
+  const prompt = promptSections.join('\n');
+  if (prompt.length > MAX_SEEDANCE_PROMPT_CHARS) {
+    errors.push(
+      `编译后的 Seedance 提示词为 ${prompt.length} 字，超过 ${MAX_SEEDANCE_PROMPT_CHARS} 字上限；请拆分剧本或精简当前镜头约束`,
+    );
+  }
 
   const fingerprintSource = JSON.stringify({
     storyboardId,
@@ -124,7 +133,7 @@ export function compileShotGenerationDraft({ storyboardId, shot, nodes = [], edg
     shotTitle: normalizeText(shot?.title),
     duration: Number(shot?.duration || 5),
     aspectRatio: normalizeText(nodes.find((node) => node.id === storyboardId)?.data?.aspectRatio) || '16:9',
-    prompt: promptSections.join('\n'),
+    prompt,
     continuityRules,
     referenceAssets,
     sources: {

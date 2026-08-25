@@ -5,6 +5,20 @@ import { persist } from 'zustand/middleware';
 const HISTORY_LIMIT = 50;
 export const CANVAS_GRAPH_STORAGE_KEY = 'neovista.canvas.graph.v1';
 
+const invalidateGenerationDraft = (draft, reason) => {
+  if (!draft) return null;
+  const staleReasons = Array.from(new Set([...(draft.staleReasons || []), reason].filter(Boolean)));
+  return {
+    ...draft,
+    stale: true,
+    staleReasons,
+  };
+};
+
+const hasStructuralChanges = (changes = []) => changes.some((change) => (
+  ['add', 'remove', 'replace', 'reset'].includes(change.type)
+));
+
 const resetCompiledShotStatuses = (node) => {
   if (node.type !== 'storyboard' || !Array.isArray(node.data?.shots)) return node;
   return {
@@ -229,6 +243,12 @@ export const useCanvasGraphStore = create(
       setViewport: (viewport) => set({ viewport }),
       setGenerationDraft: (generationDraft) => set({ generationDraft }),
       clearGenerationDraft: () => set({ generationDraft: null }),
+      markGenerationDraftStale: (reasons = []) => set((state) => ({
+        generationDraft: (Array.isArray(reasons) ? reasons : [reasons]).reduce(
+          (draft, reason) => invalidateGenerationDraft(draft, reason),
+          state.generationDraft,
+        ),
+      })),
 
       checkpoint: () => set((state) => ({
         past: [...state.past, snapshotGraph(state)].slice(-HISTORY_LIMIT),
@@ -237,11 +257,16 @@ export const useCanvasGraphStore = create(
 
       onNodesChange: (changes) => set((state) => ({
         nodes: applyNodeChanges(changes, state.nodes),
+        generationDraft: hasStructuralChanges(changes)
+          ? invalidateGenerationDraft(state.generationDraft, '画布节点结构已变化')
+          : state.generationDraft,
       })),
 
       onEdgesChange: (changes) => set((state) => ({
         edges: applyEdgeChanges(changes, state.edges),
-        generationDraft: null,
+        generationDraft: hasStructuralChanges(changes)
+          ? invalidateGenerationDraft(state.generationDraft, '镜头连接关系已变化')
+          : state.generationDraft,
       })),
 
       connect: (connection) => {
@@ -253,14 +278,17 @@ export const useCanvasGraphStore = create(
             type: 'smoothstep',
             animated: true,
           }, state.edges),
-          generationDraft: null,
+          generationDraft: invalidateGenerationDraft(state.generationDraft, '镜头连接关系已变化'),
         }));
       },
 
       addNode: (type, position, data = {}) => {
         const node = buildCanvasNode(type, position, data);
         get().checkpoint();
-        set((state) => ({ nodes: [...state.nodes, node], generationDraft: null }));
+        set((state) => ({
+          nodes: [...state.nodes, node],
+          generationDraft: invalidateGenerationDraft(state.generationDraft, '画布节点结构已变化'),
+        }));
         return node.id;
       },
 
@@ -328,7 +356,7 @@ export const useCanvasGraphStore = create(
         set((state) => ({
           nodes: [...state.nodes.map((node) => ({ ...node, selected: false })), ...nodes],
           edges: [...state.edges, ...edges],
-          generationDraft: null,
+          generationDraft: invalidateGenerationDraft(state.generationDraft, '剧情工作流结构已变化'),
         }));
         return nodes.map((node) => node.id);
       },
@@ -342,7 +370,7 @@ export const useCanvasGraphStore = create(
             && Object.prototype.hasOwnProperty.call(patch, 'shots');
           return preservesProvidedShotStatuses ? updatedNode : resetCompiledShotStatuses(updatedNode);
         }),
-        generationDraft: null,
+        generationDraft: invalidateGenerationDraft(state.generationDraft, '镜头内容或约束已变化'),
       })),
 
       deleteSelected: () => {
@@ -359,7 +387,7 @@ export const useCanvasGraphStore = create(
             && !selectedNodeIds.has(edge.source)
             && !selectedNodeIds.has(edge.target)
           )),
-          generationDraft: null,
+          generationDraft: invalidateGenerationDraft(get().generationDraft, '镜头连接关系或节点已删除'),
         });
       },
 
@@ -381,14 +409,18 @@ export const useCanvasGraphStore = create(
             ...state.nodes.map((node) => ({ ...node, selected: false })),
             ...copies,
           ],
-          generationDraft: null,
+          generationDraft: invalidateGenerationDraft(state.generationDraft, '画布节点结构已变化'),
         }));
       },
 
       clearGraph: () => {
         if (get().nodes.length === 0 && get().edges.length === 0) return;
         get().checkpoint();
-        set({ nodes: [], edges: [], generationDraft: null });
+        set((state) => ({
+          nodes: [],
+          edges: [],
+          generationDraft: invalidateGenerationDraft(state.generationDraft, '画布内容已清空'),
+        }));
       },
 
       undo: () => {
@@ -400,7 +432,7 @@ export const useCanvasGraphStore = create(
           edges: previous.edges,
           past: state.past.slice(0, -1),
           future: [snapshotGraph(state), ...state.future].slice(0, HISTORY_LIMIT),
-          generationDraft: null,
+          generationDraft: invalidateGenerationDraft(state.generationDraft, '画布已撤销到其他版本'),
         }));
       },
 
@@ -413,7 +445,7 @@ export const useCanvasGraphStore = create(
           edges: next.edges,
           past: [...state.past, snapshotGraph(state)].slice(-HISTORY_LIMIT),
           future: state.future.slice(1),
-          generationDraft: null,
+          generationDraft: invalidateGenerationDraft(state.generationDraft, '画布已重做到其他版本'),
         }));
       },
     }),

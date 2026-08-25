@@ -25,3 +25,13 @@ test('ChatHistory adapts its empty state to narrative video work', () => {
   assert.match(source, /补齐镜头、轴线与参考图/);
   assert.doesNotMatch(source, /让 Agent 继续拆解剧本/);
 });
+
+test('ChatHistory shows the effective analysis prompt and uses backend preview for confirmation', () => {
+  assert.match(source, /TemplatePromptPreview/);
+  assert.match(source, /PromptDisclosure prompt=\{msg\.prompt\}/);
+  assert.match(source, /fetchTemplatePromptPreview\(\{/);
+  assert.match(source, /parameters:\s*suggestedParams/);
+  assert.match(source, /preview\.promptStructure/);
+  assert.match(source, /preview\.effectivePrompt/);
+  assert.doesNotMatch(source, /const buildFinalPromptStructure = async/);
+});

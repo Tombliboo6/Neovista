@@ -92,7 +92,46 @@ function createSlide(slide, slideIndex, total) {
   section.innerHTML = slide.layout === 'cover'
     ? coverMarkup(slide, slideIndex, total)
     : slideMarkup(slide, slideIndex, total);
+  section.querySelectorAll('img').forEach((image) => {
+    image.decoding = 'async';
+    image.loading = Math.abs(slideIndex - index) <= 1 ? 'eager' : 'lazy';
+    if (Math.abs(slideIndex - index) > 1 && image.hasAttribute('src')) {
+      image.dataset.src = image.getAttribute('src');
+      image.removeAttribute('src');
+    }
+  });
+  section.querySelectorAll('video').forEach((video) => {
+    if (Math.abs(slideIndex - index) > 1) {
+      video.preload = 'none';
+      video.querySelectorAll('source[src]').forEach((source) => {
+        source.dataset.src = source.getAttribute('src');
+        source.removeAttribute('src');
+      });
+    }
+  });
   return section;
+}
+
+function loadSlideMedia(slideIndex) {
+  const slide = slides[slideIndex];
+  if (!slide) return;
+  slide.querySelectorAll('img[data-src]').forEach((image) => {
+    image.src = image.dataset.src;
+    image.removeAttribute('data-src');
+    image.loading = 'eager';
+  });
+  slide.querySelectorAll('video').forEach((video) => {
+    let restored = false;
+    video.querySelectorAll('source[data-src]').forEach((source) => {
+      source.src = source.dataset.src;
+      source.removeAttribute('data-src');
+      restored = true;
+    });
+    if (restored) {
+      video.preload = 'metadata';
+      video.load();
+    }
+  });
 }
 
 function buildDeck() {
@@ -168,6 +207,8 @@ function updateChrome() {
 function setSlide(nextIndex, immediate = false) {
   if (!slides.length) return;
   const target = Math.max(0, Math.min(slides.length - 1, nextIndex));
+  loadSlideMedia(target);
+  loadSlideMedia(target + 1);
   const current = slides[index];
   if (current && target !== index) {
     current.classList.remove('active');
@@ -270,11 +311,19 @@ function bindControls() {
   });
 }
 
+index = (() => {
+  const match = location.hash.match(/\d+/);
+  if (!match || !slidesData.length) return 0;
+  const requested = Number.parseInt(match[0], 10) - 1;
+  return Math.max(0, Math.min(slidesData.length - 1, Number.isFinite(requested) ? requested : 0));
+})();
 buildDeck();
 buildMenu();
 bindControls();
 index = readHashIndex();
 if (slides.length) {
+  loadSlideMedia(index);
+  loadSlideMedia(index + 1);
   slides[index].classList.add('active');
   updateChrome();
 }

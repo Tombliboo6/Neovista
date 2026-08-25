@@ -149,6 +149,29 @@
   background: rgba(255, 255, 255, 0.025);
 }
 
+.nv-story-import {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px 0;
+}
+
+.nv-story-import .nv-canvas-node__action {
+  flex: 0 0 auto;
+  gap: 6px;
+  min-height: 30px;
+  margin: 0;
+}
+
+.nv-story-import > span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .nv-asset-card {
   display: grid;
   gap: 11px;
@@ -628,6 +651,12 @@
 .nv-canvas-node__primary:hover {
   color: var(--text-primary);
   background: rgba(255, 255, 255, 0.07);
+}
+
+.nv-canvas-node__action:disabled,
+.nv-canvas-node__primary:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .nv-canvas-node__action:active,

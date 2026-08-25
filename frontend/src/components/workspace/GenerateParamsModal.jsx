@@ -1,28 +1,32 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { calculateGenerationCost, getResolutionPricing, normalizeGenerationModel } from '../../lib/generationPricing';
+import { getImageCapabilityModel } from '../../lib/imageGenerationCapabilities';
 import { useAppStore } from '../../store/useAppStore';
 
 export default function GenerateParamsModal({ isOpen, onClose, onConfirm }) {
-  const [resolution, setResolution] = useState('2K');
-  const [numImages, setNumImages] = useState(1);
+  const [resolution, setResolution] = useState('');
   const selectedModel = useAppStore((s) => s.selectedModel);
+  const imageCapabilities = useAppStore((s) => s.imageCapabilities);
+  const loadImageCapabilities = useAppStore((s) => s.loadImageCapabilities);
+  const capabilityModel = getImageCapabilityModel(imageCapabilities, selectedModel);
+  const resolutionOptions = capabilityModel?.resolutions || [];
+  const effectiveResolution = resolutionOptions.some((option) => option.value === resolution)
+    ? resolution
+    : (resolutionOptions[0]?.value || '');
+  const selectedOption = resolutionOptions.find((option) => option.value === effectiveResolution) || null;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    void loadImageCapabilities();
+  }, [isOpen, loadImageCapabilities]);
 
   if (!isOpen) return null;
 
   const handleConfirm = () => {
-    onConfirm({ resolution, numImages });
+    if (!capabilityModel || !selectedOption) return;
+    onConfirm({ resolution: selectedOption.value, numImages: 1 });
     onClose();
   };
-
-  const normalizedModel = normalizeGenerationModel(selectedModel);
-  const resolutionPricing = getResolutionPricing(normalizedModel);
-  const totalCost = calculateGenerationCost(resolution, numImages, normalizedModel);
-  const modelLabel = normalizedModel === 'nano-banana-pro'
-    ? 'Nano Banana Pro'
-    : normalizedModel === 'gpt-image-2'
-      ? 'GPT Image 2.0'
-      : 'Nano Banana 2';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -41,59 +45,49 @@ export default function GenerateParamsModal({ isOpen, onClose, onConfirm }) {
         </button>
 
         <h3 className="mb-2 text-lg font-semibold text-white/90">生图参数确认</h3>
-        <p className="mb-4 text-xs text-white/45">当前模型：{modelLabel}</p>
+        <p className="mb-4 text-xs text-white/45">当前模型：{capabilityModel?.label || '能力未加载'}</p>
 
-        <div className="space-y-4">
+        {capabilityModel ? <div className="space-y-4">
           <div>
-            <label className="mb-2 block text-sm font-medium text-white/70">画质选择</label>
+            <label className="mb-2 block text-sm font-medium text-white/70">
+              {capabilityModel.resolutionSemantics === 'quality' ? '质量档位' : '输出尺寸'}
+            </label>
             <div className="flex gap-2">
-              {['1K', '2K', '4K'].map(res => (
+              {resolutionOptions.map((option) => (
                 <button
-                  key={res}
-                  onClick={() => setResolution(res)}
+                  key={option.value}
+                  onClick={() => setResolution(option.value)}
                   className="flex-1 rounded-lg py-2 text-sm transition active:scale-[0.98]"
                   style={{
-                    background: resolution === res ? 'var(--accent-primary)' : 'var(--surface-2)',
-                    color: resolution === res ? '#fff' : 'var(--text-secondary)',
+                    background: effectiveResolution === option.value ? 'var(--accent-primary)' : 'var(--surface-2)',
+                    color: effectiveResolution === option.value ? '#fff' : 'var(--text-secondary)',
                   }}
                   >
-                  <div className="font-medium">{res}</div>
-                  <div className={`text-[11px] ${resolution === res ? 'text-white/80' : 'text-white/40'}`}>
-                    {resolutionPricing[res]} 点
+                  <div className="font-medium">{option.label}</div>
+                  <div className={`text-[11px] ${effectiveResolution === option.value ? 'text-white/80' : 'text-white/40'}`}>
+                    {option.credits} 点
                   </div>
                 </button>
               ))}
             </div>
           </div>
 
-          <div>
-            <label className="mb-2 block text-sm font-medium text-white/70">
-              生图数量：{numImages} 张
-            </label>
-            <input
-              type="range"
-              min="1"
-              max="4"
-              value={numImages}
-              onChange={(e) => setNumImages(parseInt(e.target.value))}
-              className="w-full"
-            />
-            <div className="mt-1 flex justify-between text-xs text-white/40">
-              <span>1</span>
-              <span>2</span>
-              <span>3</span>
-              <span>4</span>
-            </div>
+          <div className="rounded-xl border px-3 py-2 text-sm text-white/60" style={{ borderColor: 'var(--border-subtle)' }}>
+            当前仅支持单张生成，防止重复扣费。
           </div>
 
           <div className="rounded-xl border px-3 py-2" style={{ background: 'var(--accent-primary-soft)', borderColor: 'var(--border-subtle)' }}>
             <div className="text-sm text-white/70">预计扣费</div>
-            <div className="text-lg font-semibold" style={{ color: 'var(--accent-primary-strong)' }}>{totalCost} 点</div>
+            <div className="text-lg font-semibold" style={{ color: 'var(--accent-primary-strong)' }}>{selectedOption?.credits ?? '—'} 点</div>
             <div className="mt-1 text-xs text-white/45">
-              计费规则：当前模型分辨率单价 × 生图数量
+              价格与档位来自当前服务器能力接口
             </div>
           </div>
-        </div>
+        </div> : (
+          <div className="rounded-xl border border-amber-300/20 bg-amber-300/5 px-3 py-3 text-sm text-amber-100/70">
+            生图模型、价格或档位能力尚未通过校验，已禁止提交。
+          </div>
+        )}
 
         <div className="flex gap-3 mt-6">
           <button
@@ -105,6 +99,7 @@ export default function GenerateParamsModal({ isOpen, onClose, onConfirm }) {
           </button>
           <button
             onClick={handleConfirm}
+            disabled={!capabilityModel || !selectedOption}
             className="flex-1 rounded-lg px-4 py-2 text-white transition active:scale-[0.98]"
             style={{ background: 'var(--accent-primary)' }}
           >

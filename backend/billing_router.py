@@ -5,30 +5,32 @@ import string
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from admin_auth import verify_admin_token
-from auth import get_current_user, get_optional_user
+from admin_auth import verify_admin_access
+from auth import get_current_user
 from billing_service import redeem_code
 from database import get_db
 from models import AdminAuditLog, CreditTransaction, RedemptionCode, User
 
 router = APIRouter()
 MAX_CODE_GENERATION_ATTEMPTS = 10
+MAX_REDEMPTION_CREDITS_PER_CODE = 100_000
+MAX_REDEMPTION_BATCH_COUNT = 100
 
 
 class RedeemCodeRequest(BaseModel):
-    code: str = Field(..., min_length=4, max_length=64)
+    code: str = Field(..., strict=True, min_length=4, max_length=64)
 
 
 class RedemptionCodeBatchRequest(BaseModel):
-    credits: int = Field(..., gt=0)
-    count: int = Field(default=1, gt=0, le=200)
-    batch: Optional[str] = None
-    expires_days: Optional[int] = Field(default=None, gt=0, le=365)
-    prefix: str = Field(default="NV", min_length=2, max_length=8)
+    credits: int = Field(..., strict=True, gt=0, le=MAX_REDEMPTION_CREDITS_PER_CODE)
+    count: int = Field(default=1, strict=True, gt=0, le=MAX_REDEMPTION_BATCH_COUNT)
+    batch: Optional[str] = Field(default=None, strict=True, max_length=64)
+    expires_days: Optional[int] = Field(default=None, strict=True, gt=0, le=365)
+    prefix: str = Field(default="NV", strict=True, min_length=2, max_length=8, pattern=r"^[A-Za-z0-9]+$")
 
 
 def _generate_plain_code(prefix: str) -> str:
@@ -54,22 +56,6 @@ def _write_admin_audit_log(
             details=json.dumps(details, ensure_ascii=False),
         )
     )
-
-
-def _resolve_redemption_admin_actor(
-    db: Session,
-    *,
-    current_user: Optional[User],
-    x_admin_token: Optional[str],
-) -> Optional[User]:
-    if current_user and current_user.is_admin:
-        return current_user
-
-    if x_admin_token:
-        verify_admin_token(x_admin_token)
-        return db.query(User).filter(User.is_admin.is_(True)).order_by(User.id.asc()).first()
-
-    raise HTTPException(status_code=403, detail="需要管理员权限")
 
 
 @router.get("/me")
@@ -116,9 +102,9 @@ async def redeem_billing_code(
     except ValueError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"兑换失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="兑换失败")
 
     return {
         "credits": balance,
@@ -129,28 +115,25 @@ async def redeem_billing_code(
 @router.post("/admin/redemption-codes")
 async def create_redemption_codes(
     request: RedemptionCodeBatchRequest,
-    current_user: Optional[User] = Depends(get_optional_user),
+    admin_actor: User = Depends(verify_admin_access),
     db: Session = Depends(get_db),
-    x_admin_token: Optional[str] = Header(None),
 ):
-    current_user = db.merge(current_user) if current_user else None
-    admin_actor = _resolve_redemption_admin_actor(
-        db,
-        current_user=current_user,
-        x_admin_token=x_admin_token,
-    )
+    admin_actor = db.merge(admin_actor)
 
     expires_at = None
     if request.expires_days:
         expires_at = datetime.utcnow() + timedelta(days=request.expires_days)
 
     plaintext_codes = []
+    generated_code_hashes = set()
     try:
         for _ in range(request.count):
             generated_code = None
             for _attempt in range(MAX_CODE_GENERATION_ATTEMPTS):
                 raw_code = _generate_plain_code(request.prefix)
                 code_hash = hashlib.sha256(raw_code.strip().upper().encode("utf-8")).hexdigest()
+                if code_hash in generated_code_hashes:
+                    continue
                 existing = (
                     db.query(RedemptionCode.id)
                     .filter(RedemptionCode.code_hash == code_hash)
@@ -169,31 +152,34 @@ async def create_redemption_codes(
                     )
                 )
                 generated_code = raw_code
+                generated_code_hashes.add(code_hash)
                 plaintext_codes.append(raw_code)
                 break
 
             if generated_code is None:
                 raise HTTPException(status_code=500, detail="兑换码生成失败，请重试")
 
+        code_hash_digest = hashlib.sha256(
+            "|".join(sorted(generated_code_hashes)).encode("utf-8")
+        ).hexdigest()
         _write_admin_audit_log(
             db,
-            actor_user_id=admin_actor.id if admin_actor else None,
+            actor_user_id=admin_actor.id,
             action="GENERATE_REDEMPTION_CODES",
             details={
                 "credits": request.credits,
                 "count": request.count,
                 "batch": request.batch,
-                "expires_days": request.expires_days,
-                "codes": plaintext_codes,
+                "code_hash_digest": code_hash_digest,
             },
         )
         db.commit()
     except HTTPException:
         db.rollback()
         raise
-    except Exception as e:
+    except Exception:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"生成兑换码失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="生成兑换码失败")
     return {
         "count": len(plaintext_codes),
         "credits": request.credits,

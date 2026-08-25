@@ -6,7 +6,7 @@ import {
   getGalleryCardMediaPresentation,
   getImageLoadingStrategy,
   getNextVisibleCount,
-  getPrimaryTemplateImage,
+  getTemplatePreviewImage,
   INITIAL_GALLERY_VISIBLE_COUNT,
 } from '../../lib/galleryPerformance.js';
 
@@ -104,7 +104,7 @@ export default function TemplateGallery() {
 
       <div className="columns-2 md:columns-3 lg:columns-4 gap-4">
         {visibleTemplates.map((template, index) => {
-          const previewImage = template.thumbnail_image || getPrimaryTemplateImage(template.images || []);
+          const previewImage = getTemplatePreviewImage(template);
           const loadingStrategy = getImageLoadingStrategy(index);
           const mediaPresentation = getGalleryCardMediaPresentation();
 

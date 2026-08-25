@@ -1,8 +1,13 @@
 const SOURCE = {
   dartmouth: { label: 'Dartmouth AI 史', url: 'https://ai.dartmouth.edu/our-story' },
+  alexnet: { label: 'AlexNet 论文', url: 'https://papers.nips.cc/paper_files/paper/2012/hash/c399862d3b9d6b76c8436e924a68c45b-Abstract.html' },
+  gan: { label: 'GAN 论文', url: 'https://papers.nips.cc/paper_files/paper/2014/hash/f033ed80deb0234979a61f95710dbe25-Abstract.html' },
   transformer: { label: 'Transformer 论文', url: 'https://arxiv.org/abs/1706.03762' },
+  diffusion: { label: '扩散模型论文', url: 'https://arxiv.org/abs/2006.11239' },
+  stableDiffusion: { label: '潜空间扩散论文', url: 'https://arxiv.org/abs/2112.10752' },
   chatgpt: { label: 'OpenAI · ChatGPT', url: 'https://openai.com/index/chatgpt/' },
   soraHistory: { label: 'OpenAI · Sora 研究', url: 'https://openai.com/index/video-generation-models-as-world-simulators/' },
+  adobeCreators2026: { label: 'Adobe · 2026 Creators’ Toolkit Report', url: 'https://news.adobe.com/news/2026/06/creators-toolkit-report-2026' },
   gpt56: { label: 'OpenAI · GPT-5.6', url: 'https://openai.com/index/gpt-5-6/' },
   gptImage2: { label: 'OpenAI · GPT Image 2', url: 'https://openai.com/index/introducing-chatgpt-images-2-0/' },
   sora2: { label: 'OpenAI · Sora 2 状态', url: 'https://openai.com/index/sora-2/' },
@@ -62,19 +67,19 @@ window.COURSE_SLIDES = [
   },
   {
     section: '课程内容介绍',
-    title: '导师介绍',
+    title: '个人介绍',
     layout: 'profile',
     eyebrow: '周文龙',
     html: `
       <div class="profile-grid">
-        <div class="profile-mark profile-name"><span>周文龙</span><small>导师</small></div>
+        <div class="profile-mark profile-name"><span>周文龙</span></div>
         <div class="profile-facts">
           <div><b>AIGC视频内容制作</b><p>从脚本、分镜到成片交付</p></div>
           <div><b>鸭鸭特工队项目指导</b><p>角色、内容与制作流程建设</p></div>
           <div><b>今天一起解决</b><p>模型怎么选，视频怎么做，项目怎么参与</p></div>
         </div>
       </div>
-      <p class="profile-note">先认识彼此，经历和项目细节由导师在课堂展开。</p>`
+      <p class="profile-note">先认识彼此，经历和项目细节在课堂展开。</p>`
   },
   {
     section: '课程内容介绍',
@@ -94,15 +99,22 @@ window.COURSE_SLIDES = [
   },
   {
     section: '课程内容介绍',
-    title: 'IP视频',
-    layout: 'compare',
-    lead: '一条视频解决一次表达，IP视频积累一套可以继续使用的内容系统。',
+    title: 'AI视频',
+    layout: 'ai-video',
+    lead: '视频把文字、画面、声音和动作组织在一起，也让心理知识进入具体的校园情境。',
     html: `
-      <div class="compare-panels ip-compare">
-        <article><small>一条视频</small><b>发完就结束</b><ul><li>角色与画风可随时更换</li><li>每次重新解释背景</li><li>素材难以接着使用</li></ul></article>
-        <div class="compare-arrow">→</div>
-        <article class="featured"><small>IP视频</small><b>每一条都在积累</b><ul><li>固定角色与关系</li><li>固定栏目与表达方式</li><li>角色板、场景和提示词持续复用</li></ul></article>
-      </div>`
+      <div class="ai-video-layout">
+        <figure class="ai-video-scene">
+          <img src="assets/generated/ai-video-psychology-scene-v1.jpg" alt="饭团、小小和馒头把一个心理问题变成有场景、有情绪、有行动的视频故事">
+          <figcaption><b>一个心理主题</b><span>从概念进入人物、场景和行动</span></figcaption>
+        </figure>
+        <div class="ai-video-reasons">
+          <article><strong>01</strong><div><b>信息更完整</b><p>脚本、画面、对白和动作进入同一个作品。</p></div></article>
+          <article><strong>02</strong><div><b>心理内容更具体</b><p>焦虑、拖延和人际关系，可以放进宿舍、课堂与考试等校园情境。</p></div></article>
+          <article><strong>03</strong><div><b>传播更方便</b><p>一条成片可以用于短视频账号、校园活动和课堂分享。</p></div></article>
+        </div>
+      </div>
+      <p class="ai-video-summary"><b>AIGC生成不同内容</b><span>视频把这些内容组织成一个完整故事</span></p>`
   },
   {
     section: '课程内容介绍',
@@ -120,44 +132,65 @@ window.COURSE_SLIDES = [
   {
     section: 'AI发展背景介绍',
     title: 'AI发展背景介绍',
-    layout: 'timeline',
-    lead: 'AI视频由多条技术路线逐步汇合而来。',
+    layout: 'history-map',
+    lead: 'AI创作来自70年的技术积累，能力从“识别世界”走到“协作完成项目”。',
     html: `
-      <div class="timeline">
-        <article><time>1956</time><b>人工智能命名</b><p>达特茅斯研讨会把研究方向正式聚在一起</p></article>
-        <article><time>2017</time><b>Transformer</b><p>让模型更有效地理解与生成序列内容</p></article>
-        <article><time>2022</time><b>ChatGPT</b><p>自然语言成为普通人调用模型的入口</p></article>
-        <article><time>2024</time><b>视频世界模型</b><p>文本开始直接驱动画面、运动与镜头</p></article>
-        <article><time>2026</time><b>统一多模态创作</b><p>文字、图片、声音和视频开始在同一流程中协作</p></article>
+      <div class="history-map">
+        <div class="history-track">
+          <article class="above"><time>1956</time><b>人工智能成为研究领域</b><p>达特茅斯研讨会把“机器智能”聚成明确方向。</p></article>
+          <article class="below"><time>2012</time><b>机器学会看图</b><p>AlexNet推动深度学习进入大规模视觉识别。</p></article>
+          <article class="above"><time>2014</time><b>模型开始生成画面</b><p>GAN让模型从判断“是什么”走向创造“没见过的新图”。</p></article>
+          <article class="below"><time>2017</time><b>Transformer出现</b><p>注意力机制后来成为语言与多模态模型的重要基础。</p></article>
+          <article class="above"><time>2020</time><b>扩散生成更稳定</b><p>扩散模型逐步提高图像质量，也影响后来的图像与视频生成。</p></article>
+          <article class="below"><time>2022</time><b>自然语言成为入口</b><p>ChatGPT与生成图像工具让普通人直接用语言创作。</p></article>
+          <article class="above"><time>2024—2026</time><b>进入多模态工作流</b><p>文字、图片、声音和视频开始被同一项目连续调用与修改。</p></article>
+        </div>
+        <div class="history-shift"><span>识别世界</span><i>→</i><span>生成内容</span><i>→</i><span>理解参考</span><i>→</i><span>协作完成项目</span></div>
       </div>`,
-    sources: [SOURCE.dartmouth, SOURCE.transformer, SOURCE.chatgpt, SOURCE.soraHistory, SOURCE.seedance]
+    sources: [SOURCE.dartmouth, SOURCE.alexnet, SOURCE.gan, SOURCE.transformer, SOURCE.diffusion, SOURCE.stableDiffusion, SOURCE.chatgpt, SOURCE.soraHistory, SOURCE.seedance]
   },
   {
     section: 'AI发展背景介绍',
     title: '为什么用',
-    layout: 'cards',
+    layout: 'ai-why',
+    lead: 'AI已经进入创作流程，但速度不等于自动完成；越靠近发布，人的判断越重要。',
     html: `
-      <div class="big-number-grid">
-        <article><strong>01</strong><b>先做出来</b><p>没有演员、场地或完整团队，也能先做一个可看的原型。</p></article>
-        <article><strong>02</strong><b>快速试错</b><p>同一想法可以比较多个脚本、画面和镜头方向。</p></article>
-        <article><strong>03</strong><b>小团队协作</b><p>一个人可以覆盖更多环节，团队仍要分工与互相检查。</p></article>
-        <article><strong>04</strong><b>形成新岗位</b><p>企业已经在招聘会脚本、生成、剪辑、评估和交付的人。</p></article>
-      </div>`,
-    sources: [SOURCE.jobsFull, SOURCE.jobsIntern]
+      <div class="ai-trend-stats">
+        <article><strong>75%</strong><b>已经融入工作</b><p>受访创作者把创意AI描述为“已融入”或“不可缺少”。</p></article>
+        <article><strong>93%</strong><b>制作速度更快</b><p>AI最直接的价值，是更快把想法变成第一版内容。</p></article>
+        <article><strong>57%</strong><b>仍需明显修改</b><p>AI输出在分享前通常还需要中度或大量人工编辑。</p></article>
+        <article><strong>85%</strong><b>最终决定属于人</b><p>受访者认为最终创意决策应始终由创作者完成。</p></article>
+      </div>
+      <div class="idea-to-decision">
+        <article><small>01</small><b>模糊想法</b><p>“我想讲拖延，但还说不清。”</p></article><i>→</i>
+        <article><small>02</small><b>可看Demo</b><p>先出现脚本、画面或短片小样。</p></article><i>→</i>
+        <article><small>03</small><b>团队讨论</b><p>围绕同一个可见结果判断和修改。</p></article><i>→</i>
+        <article><small>04</small><b>明确方案</b><p>确定脚本、分镜、风格与制作标准。</p></article>
+      </div>
+      <div class="ai-why-principle"><b>AI缩短的是“想法到可讨论对象”的距离。</b><span>目标、事实、审美、取舍和最终发布仍由人负责。</span></div>
+      <p class="survey-note">Adobe × Harris Poll｜2026年5月｜8国16,000+内容创作者。75%对应工作流采用率；报告没有统计成片由AI生成的比例。</p>`,
+    sources: [SOURCE.adobeCreators2026]
   },
   {
     section: 'AI发展背景介绍',
     title: '怎么用',
-    layout: 'process',
-    lead: '先确定想得到什么，再决定让哪一种模型接手。',
+    layout: 'workflow-use',
+    lead: '在真实视频工作流里，人先给标准，AI生成候选，人确认以后再进入下一步。',
     html: `
-      <div class="four-step">
-        <article><b>定义结果</b><p>给谁看，要讲什么，最后交什么</p></article>
-        <article><b>拆成任务</b><p>文字、图片、声音和视频分开处理</p></article>
-        <article><b>选择模型</b><p>按输入、控制力、速度和成本做选择</p></article>
-        <article><b>留下资产</b><p>保存提示词、参考图、源片和失败原因</p></article>
+      <div class="workflow-stages">
+        <article><strong>01</strong><b>选题与目标</b><small>选题卡</small></article>
+        <i>→</i><article><strong>02</strong><b>脚本与分镜</b><small>脚本＋分镜表</small></article>
+        <i>→</i><article><strong>03</strong><b>关键帧</b><small>批准关键帧</small></article>
+        <i>→</i><article><strong>04</strong><b>视频片段</b><small>可用镜头</small></article>
+        <i>→</i><article><strong>05</strong><b>剪辑与发布</b><small>成片＋资料库</small></article>
       </div>
-      <p class="center-note">AI负责生成候选，人负责判断方向、选择结果和承担交付。</p>`
+      <div class="workflow-role-matrix">
+        <div class="workflow-matrix-head"><b>每一步</b><span>选题与目标</span><span>脚本与分镜</span><span>关键帧</span><span>视频片段</span><span>剪辑与发布</span></div>
+        <div class="workflow-matrix-row human"><b>人负责</b><span>受众、意义、内容边界</span><span>冲突、节奏、角色变化</span><span>角色、场景、构图标准</span><span>动作、运镜、声音、时长</span><span>筛选、审核与最终交付</span></div>
+        <div class="workflow-matrix-row ai"><b>AI协助</b><span>查资料、比角度、列候选</span><span>写初稿、拆镜头、查遗漏</span><span>出候选、局部改、统一风格</span><span>按镜生成多个可比较版本</span><span>字幕、声音与多尺寸版本</span></div>
+        <div class="workflow-matrix-row gate"><b>通过条件</b><span>一句话说清受众与问题</span><span>故事有变化，镜头能拆开</span><span>第一眼认得角色与场景</span><span>动作可用，前后镜头接得上</span><span>内容、版权与平台规格通过</span></div>
+      </div>
+      <div class="human-ai-rule"><span>人给标准</span><i>→</i><span>AI出候选</span><i>→</i><span>人做判断</span><i>→</i><span>通过后进入下一步</span></div>`
   },
   {
     section: '鸭鸭视频背景介绍',
@@ -178,7 +211,7 @@ window.COURSE_SLIDES = [
           <div class="next-direction-grid">
             <span>年度选题库</span><span>线下活动物料</span><span>校园特色动植物联动</span><span>鸭鸭AI对话模型</span><span>更完整的私域工作台</span>
           </div>
-          <p>视频不是终点，它会继续连接知识内容、校园活动、学生共创与长期服务。</p>
+          <p>视频会继续连接知识内容、校园活动、学生共创与长期服务。</p>
         </div>
       </div>`
   },
@@ -220,7 +253,7 @@ window.COURSE_SLIDES = [
         <figure class="visual-panel media-contain"><img src="assets/generated/duck-student-outcomes-v2.png" alt="大学生与三只鸭鸭共同完成分镜、账号运营、项目汇报和作品集"></figure>
         <div class="outcome-stack">
           <article><b>一份能说明过程的作品集</b><p>脚本、分镜、提示词、失败修改与成片都能留下。</p></article>
-          <article><b>一次真实账号与项目经验</b><p>参与稳定栏目、持续更新和数据复盘，而不是只做课堂练习。</p></article>
+          <article><b>一次真实账号与项目经验</b><p>参与稳定栏目、持续更新和数据复盘，留下课堂以外的项目过程。</p></article>
           <article><b>一组可继续发展的成果</b><p>可以进入大创、挑战杯、个人账号、实习或后续合作。</p></article>
         </div>
       </div>`
@@ -296,7 +329,7 @@ window.COURSE_SLIDES = [
     section: '你们能够获得什么',
     title: '自媒体账号',
     layout: 'process',
-    lead: 'AI可以把制作做快，账号为什么值得关注仍要由你回答。',
+    lead: '账号的长期价值来自稳定主题、固定表达、持续更新和数据复盘。',
     html: `
       <div class="account-loop">
         <article><b>固定主题</b><p>愿意长期讲什么</p></article>
@@ -388,7 +421,7 @@ window.COURSE_SLIDES = [
     section: 'AI工具介绍',
     title: '对比差异如何使用',
     layout: 'compare-models',
-    lead: '没有永久总冠军。下面是当前版本的“能力侧重”，不是固定排名。',
+    lead: '模型会持续更新。下面比较当前版本的能力侧重和适用任务。',
     html: `
       <div class="model-compare-grid">
         <article><header><span>OpenAI</span><b>GPT-5.6 Sol</b></header><p>复杂推理、编码、科学与设计任务能力上限高。</p><small>可以先试｜关键策划、难题拆解、最终复核</small></article>
@@ -404,14 +437,14 @@ window.COURSE_SLIDES = [
   {
     section: 'AI工具介绍',
     title: '图片模型',
-    layout: 'model-cards',
-    lead: '图片模型不只“从零画一张图”，更重要的是参考图理解、角色一致、局部编辑与文字版式。',
+    layout: 'model-showcase',
+    lead: '先看官方示例，再看它能不能解决项目里的角色、场景、关键帧和文字问题。',
     html: `
-      <div class="model-card-grid four brand-model-grid image-model-grid">
-        <article><header><img src="assets/logos/bytedance.svg" alt="字节跳动标志"><span>字节</span></header><b>Seedream 5.0 Lite</b><ul><li>跨模态理解与视觉推理</li><li>多主体参考与精确风格迁移</li><li>编辑时尽量保护未修改区域</li><li class="project-use">鸭鸭项目｜复杂场景、多人构图、知识视觉化</li></ul></article>
-        <article><header><img src="assets/logos/glm.png" alt="智谱标志"><span>智谱</span></header><b>GLM-Image</b><ul><li>中文文字与密集信息表现</li><li>海报、PPT、科普图解和多格画面</li><li>全局构图与局部文字配合生成</li><li class="project-use">鸭鸭项目｜活动海报、知识卡与信息图</li></ul></article>
-        <article><header class="wordmark-logo"><span>OpenAI</span></header><b>GPT Image 2</b><ul><li>参考图、生成与局部编辑</li><li>文字排版、多语言与精细控制</li><li>多场景连续性和风格保持</li><li class="project-use">鸭鸭项目｜角色修正、关键帧与复杂改图</li></ul></article>
-        <article><header><img src="assets/logos/gemini.svg" alt="Gemini标志"><span>Google</span></header><b>Nano Banana 2</b><ul><li>快速生成与高保真编辑</li><li>文字表现和网页信息辅助</li><li>512至4K、多种画幅</li><li class="project-use">鸭鸭项目｜快速换场景、改道具、做多尺寸版本</li></ul></article>
+      <div class="image-showcase-grid">
+        <article><figure><img src="assets/examples/seedream-5-lite-official-v1.jpg" alt="Seedream 5.0 Lite官方信息可视化示例"><figcaption>官方示例｜复杂信息可视化</figcaption></figure><header><span><img src="assets/logos/bytedance.svg" alt="">字节 Seed</span><b>Seedream 5.0 Lite</b></header><p>理解复杂指令、视觉推理、多主体参考与精确编辑。</p><div class="model-check"><b>输入</b><span>文字＋多张参考图</span><b>输出</b><span>新画面＋局部编辑</span><b>鸭鸭</b><span>复杂场景 · 多人构图 · 知识图解</span><b>检查</b><span>角色身份 · 画面文字 · 修改范围</span></div></article>
+        <article><figure class="contain"><img src="assets/examples/glm-image-official-v2.jpeg" alt="GLM-Image官方中文长文字海报示例"><figcaption>官方示例｜中文长文字海报</figcaption></figure><header><span><img src="assets/logos/glm.png" alt="">智谱</span><b>GLM-Image</b></header><p>重点处理中文文字、海报、PPT、科普图与多格画面。</p><div class="model-check"><b>输入</b><span>中文要求＋参考图片</span><b>输出</b><span>海报 · PPT · 多格画面</span><b>鸭鸭</b><span>活动视觉 · 心理知识卡 · 信息图</span><b>检查</b><span>错别字 · 数值 · 信息层级</span></div></article>
+        <article><figure class="contain"><img src="assets/examples/gpt-image-2-official-v5.jpg" alt="GPT Image 2官方文字版式示例"><figcaption>官方示例｜文字版式与细节</figcaption></figure><header><span class="text-logo">OpenAI</span><b>GPT Image 2</b></header><p>参考图生成、局部编辑、文字版式与细节控制更完整。</p><div class="model-check"><b>输入</b><span>文字＋固定角色参考图</span><b>输出</b><span>生成、编辑与反复修改</span><b>鸭鸭</b><span>角色修正 · 关键帧 · 复杂改图</span><b>检查</b><span>固定配饰 · 未编辑区域 · 中文细节</span></div></article>
+        <article><figure><img src="assets/examples/nano-banana-2-official-v2.webp" alt="Nano Banana 2官方多角色连续故事示例"><figcaption>官方示例｜多角色连续故事</figcaption></figure><header><span><img src="assets/logos/gemini.svg" alt="">Google</span><b>Nano Banana 2</b></header><p>快速生成、高保真编辑、主体一致与多画幅迭代。</p><div class="model-check"><b>输入</b><span>文字＋主体或场景参考</span><b>输出</b><span>快速生成＋高保真编辑</span><b>鸭鸭</b><span>换场景 · 改道具 · 多尺寸版本</span><b>检查</b><span>身份漂移 · 背景重画 · 多图顺序</span></div></article>
       </div>`,
     sources: [SOURCE.seedream, SOURCE.glmImage, SOURCE.gptImage2, SOURCE.nanoBanana2]
   },
@@ -433,45 +466,48 @@ window.COURSE_SLIDES = [
   {
     section: 'AI工具介绍',
     title: 'Seedance 2.0',
-    layout: 'model-hero',
+    layout: 'seedance-showcase',
     theme: 'dark',
     eyebrow: '字节跳动视频生成模型',
     html: `
-      <div class="model-hero-grid">
-        <div class="model-wordmark">SEEDANCE<br><strong>2.0</strong></div>
-        <div class="model-hero-facts four">
-          <article><b>多模态输入</b><p>文字、图片、音频和视频都可以成为参考。</p></article>
-          <article><b>参考与镜头控制</b><p>学习主体、构图、摄影语言、运动节奏与声音。</p></article>
-          <article><b>生成与编辑</b><p>图生视频、定向修改、视频延长与已有视频编辑。</p></article>
-          <article><b>原生音频</b><p>可生成对白、环境音与多轨声音，并与画面配合。</p></article>
+      <div class="seedance-showcase">
+        <figure><img src="assets/examples/seedance-2-official-v1.jpg" alt="Seedance 2.0官方复杂双人运动示例画面"><figcaption>官方示例｜复杂双人运动、物理交互与镜头跟随</figcaption></figure>
+        <div class="seedance-copy">
+          <div class="seedance-wordmark">SEEDANCE <strong>2.0</strong></div>
+          <div class="seedance-fact-grid">
+            <article><b>四种输入</b><p>文字、图片、音频、视频可以组合参考。</p></article>
+            <article><b>15秒多镜头</b><p>支持高质量多镜头音视频联合生成。</p></article>
+            <article><b>生成＋编辑</b><p>定向修改、视频延长与已有视频编辑。</p></article>
+            <article><b>原生声音</b><p>对白、环境音和双声道声音跟随画面。</p></article>
+          </div>
         </div>
       </div>
-      <p class="model-hero-note">对鸭鸭最有价值的是“参考图＋动作描述＋镜头说明”的组合。仍要检查多角色身份、复杂动作、画面文字和长镜头稳定性。</p>`,
+      <p class="seedance-note">鸭鸭最需要的是“固定角色参考图＋单镜头动作＋明确运镜”。多主体一致、画面文字和复杂编辑仍有稳定性问题。</p>`,
     sources: [SOURCE.seedance]
   },
   {
     section: 'AI工具介绍',
     title: '国内视频模型',
-    layout: 'model-cards',
-    lead: '三家都在向“参考可控、原生声音、生成与编辑一体化”发展，课堂重点看它们怎样服务具体镜头。',
+    layout: 'video-showcase',
+    lead: '用同一分镜比较“可用镜头率”。三家都在加强参考控制、原生声音与生成编辑一体化。',
     html: `
-      <div class="model-card-grid three brand-model-grid video-model-grid">
-        <article><header><img src="assets/logos/bytedance.svg" alt="字节跳动标志"><span>字节 Seed</span></header><b>Seedance 2.0</b><ul><li>文字、图像、音频、视频多模态参考</li><li>主体、镜头语言、运动节奏与声音共同控制</li><li>支持定向编辑、延长和原生音频</li><li class="project-use">鸭鸭项目｜角色参考明确、动作和镜头控制要求高的镜头</li></ul></article>
-        <article><header><img src="assets/logos/kuaishou.svg" alt="快手可灵标志"><span>快手</span></header><b>可灵 Video 3.0</b><ul><li>面向多镜头叙事、多人和多元素一致性</li><li>把画面、表演与原生音频放进同一生成过程</li><li>适合需要连续动作与镜头衔接的短片段</li><li class="project-use">鸭鸭项目｜双人对话、连续表演与带声音的短镜头</li></ul></article>
-        <article><header class="wordmark-logo"><span>MiniMax</span></header><b>Hailuo H3</b><ul><li>统一文字、图片、视频与音频输入</li><li>原生立体声，最高支持15秒与2K</li><li>支持动作迁移、视频编辑与品牌文字表现</li><li class="project-use">鸭鸭项目｜广告感镜头、动作参考与需要声音的成片段落</li></ul></article>
+      <div class="video-showcase-grid three">
+        <article><figure><img src="assets/examples/seedance-2-official-v1.jpg" alt="Seedance 2.0官方双人运动视频画面"><figcaption>官方示例｜复杂运动与物理交互</figcaption></figure><header><span><img src="assets/logos/bytedance.svg" alt="">字节 Seed</span><b>Seedance 2.0</b></header><p>多模态参考、镜头语言、定向编辑与原生声音。</p><div class="model-check"><b>输入</b><span>文字 · 图片 · 音频 · 视频</span><b>输出</b><span>15秒多镜头音视频＋编辑</span><b>鸭鸭</b><span>固定角色参考 · 明确动作与运镜</span><b>检查</b><span>多角色身份 · 四肢 · 长镜头漂移</span></div></article>
+        <article><figure><img src="assets/examples/kling-3-official-v1.jpg" alt="可灵Video 3.0官方视频示例画面"><figcaption>官方示例｜连续表演与电影感画面</figcaption></figure><header><span><img src="assets/logos/kuaishou.svg" alt="">快手</span><b>可灵 Video 3.0</b></header><p>面向多镜头叙事、多人一致、连续表演与原生音频。</p><div class="model-check"><b>重点</b><span>多人一致 · 多镜头 · 原生声音</span><b>输出</b><span>连续表演与叙事短片段</span><b>鸭鸭</b><span>双人对话 · 连续动作 · 声音镜头</span><b>检查</b><span>口型 · 说话人 · 镜头衔接</span></div></article>
+        <article><figure><img src="assets/examples/minimax-h3-official-v2.jpg" alt="MiniMax H3官方视频示例画面"><figcaption>官方示例｜生活化表演与自然光影</figcaption></figure><header><span class="text-logo">MiniMax</span><b>Hailuo H3</b></header><p>四模态输入，支持动作迁移、视频编辑、15秒与2K输出。</p><div class="model-check"><b>输入</b><span>文字 · 图片 · 音频 · 视频</span><b>输出</b><span>15秒、2K与视频编辑</span><b>鸭鸭</b><span>动作参考 · 广告感镜头 · 声音段落</span><b>检查</b><span>动作物理 · 主体外形 · 品牌文字</span></div></article>
       </div>`,
     sources: [SOURCE.seedance, SOURCE.kling, SOURCE.minimax]
   },
   {
     section: 'AI工具介绍',
     title: '国外视频模型',
-    layout: 'model-cards',
-    lead: 'Veo与Runway仍是理解“参考一致性”和“连续世界”的重要工具；Sora 2作为产品状态案例保留。',
+    layout: 'video-showcase',
+    lead: 'Veo强调多参考要素，Runway强调连续世界；Sora 2保留为“产品会下线”的流程提醒。',
     html: `
-      <div class="model-card-grid three brand-model-grid video-model-grid">
-        <article><header><img src="assets/logos/gemini.svg" alt="Google Gemini标志"><span>Google</span></header><b>Veo 3.1</b><ul><li>Ingredients-to-Video用多张参考图控制人物、物体和风格</li><li>加强身份保持与9×16竖屏生成</li><li>支持1080P与4K升级输出</li><li class="project-use">鸭鸭项目｜多参考图、竖屏发布与高分辨率交付</li></ul></article>
-        <article><header><img src="assets/logos/runway.svg" alt="Runway标志"><span>Runway</span></header><b>Gen-4</b><ul><li>以视觉参考保持角色、地点和物体一致</li><li>强调跨镜头的世界连续性与视觉开发</li><li>适合先建立一套世界，再扩展多个镜头</li><li class="project-use">鸭鸭项目｜固定校园场景、道具与连续镜头测试</li></ul></article>
-        <article class="muted"><header class="wordmark-logo"><span>OpenAI</span></header><b>Sora 2</b><ul><li>曾是重要的视频生成产品与研究路线</li><li>官方已在2026年4月停止提供Sora 2</li><li>课程不把它列入当前可用工具清单</li><li class="project-use">提醒｜产品可下线，流程资产不能绑死在单一工具</li></ul></article>
+      <div class="video-showcase-grid three">
+        <article><figure class="contain"><img src="assets/examples/veo-3-1-official-v1.png" alt="Veo 3.1 Ingredients to Video官方示例合集"><figcaption>官方示例｜多参考图控制人物、物体与风格</figcaption></figure><header><span><img src="assets/logos/gemini.svg" alt="">Google</span><b>Veo 3.1</b></header><p>多参考要素控制、竖屏生成与高分辨率输出。</p><div class="model-check"><b>输入</b><span>文字＋多张人物、物体与风格参考</span><b>输出</b><span>横竖画幅与高分辨率视频</span><b>鸭鸭</b><span>多参考图 · 竖屏发布 · 高分辨率交付</span><b>检查</b><span>入口可用性 · 身份连续 · 声画关系</span></div></article>
+        <article><figure><img src="assets/examples/runway-gen4-official-v1.png" alt="Runway Gen-4官方跨镜头角色一致示例"><figcaption>官方示例｜同一人物在不同镜头保持连续</figcaption></figure><header><span><img src="assets/logos/runway.svg" alt="">Runway</span><b>Gen-4</b></header><p>用视觉参考保持人物、地点、物体和世界连续。</p><div class="model-check"><b>输入</b><span>文字＋视觉参考</span><b>重点</b><span>人物、地点与物体的连续世界</span><b>鸭鸭</b><span>固定校园场景 · 道具 · 连续镜头</span><b>检查</b><span>动作稳定 · 空间关系 · 镜间变化</span></div></article>
+        <article class="video-status-card"><div class="status-visual"><span>STOPPED</span><strong>SORA 2</strong><small>2026.04</small></div><header><span class="text-logo">OpenAI</span><b>Sora 2</b></header><p>曾是重要研究与产品路线，官方已经停止提供。</p><div class="model-check"><b>状态</b><span>产品停止提供，历史研究资料仍可查看</span><b>提醒</b><span>项目流程不能绑死在单一工具</span><b>保留</b><span>角色板 · 分镜 · 提示词 · 版本与源文件</span></div></article>
       </div>`,
     sources: [SOURCE.veo31, SOURCE.runway, SOURCE.sora2]
   },
@@ -481,13 +517,13 @@ window.COURSE_SLIDES = [
     layout: 'priority',
     html: `
       <div class="choice-table video-choice-table">
-        <div class="choice-head"><span>镜头需求</span><span>可以先试</span><span>为什么</span><span>仍要检查</span></div>
+        <div class="choice-head"><span>镜头需求</span><span>可以先试</span><span>选择理由</span><span>仍要检查</span></div>
         <div><b>固定鸭鸭参考图＋明确动作＋镜头运动</b><span>Seedance 2.0</span><p>多模态参考、镜头语言和定向编辑组合完整</p><small>多角色身份、四肢、复杂动作与长镜头漂移</small></div>
         <div><b>双人表演、多镜头叙事、需要原生声音</b><span>可灵 Video 3.0<br>Seedance 2.0</span><p>都值得用同一分镜测试人物关系和声音</p><small>口型、说话人、镜头衔接和背景声</small></div>
         <div><b>动作参考、视频编辑、广告感短镜头</b><span>Hailuo H3<br>Seedance 2.0</span><p>动作迁移与生成编辑一体化更有价值</p><small>品牌文字、动作物理、主体外形变化</small></div>
         <div><b>多参考图、竖屏发布、高分辨率交付</b><span>Veo 3.1<br>Runway Gen-4</span><p>前者关注参考要素和输出，后者关注连续世界</p><small>入口可用性、成本、比例和跨镜头一致性</small></div>
       </div>
-      <p class="table-note">先用同一个关键帧、动作与时长做小样；比较可用镜头率，而不是只比较某一次最惊艳的结果。</p>`,
+      <p class="table-note">先用同一个关键帧、动作与时长做小样；判断依据是可用镜头率，单次惊艳结果只作参考。</p>`,
     sources: [SOURCE.seedance, SOURCE.kling, SOURCE.minimax, SOURCE.veo31, SOURCE.runway]
   },
   {
@@ -541,89 +577,120 @@ window.COURSE_SLIDES = [
   {
     section: 'AI视频工作流介绍',
     title: '选题',
-    layout: 'venn',
-    lead: '鸭鸭选题要同时落在三个圈里。',
+    layout: 'topic-selection',
+    lead: '好选题先落在一个学生能马上认出的具体瞬间，再提炼心理知识。',
     html: `
-      <div class="venn-wrap">
-        <div class="venn a"><b>学生正在经历</b><span>宿舍、考试、关系、成长</span></div>
-        <div class="venn b"><b>心理知识可承接</b><span>有依据、有边界、能行动</span></div>
-        <div class="venn c"><b>鸭鸭适合表达</b><span>轻剧情、角色关系、校园语言</span></div>
-        <strong class="venn-center">可做选题</strong>
+      <div class="topic-selection-layout">
+        <figure class="topic-selection-visual"><img src="assets/generated/duck-topic-selection-workshop-v1.jpg" alt="三只鸭鸭从校园真实瞬间筛选可拍故事"></figure>
+        <div class="topic-chain">
+          <article><span>真实瞬间</span><b>17:48醒来，天已经快黑了</b><p>时间、地点和动作都具体，学生一眼能认出这个处境。</p></article>
+          <article><span>真实感受</span><b>“今天又被我毁掉了”</b><p>把角色当时脑中最直接的一句话写出来。</p></article>
+          <article><span>心理落点</span><b>计划中断后，把一天判断成彻底失败</b><p>知识只解释故事里已经发生的现象，不先贴诊断标签。</p></article>
+          <article><span>鸭鸭故事</span><b>饭团卡住，小小听见，馒头推动一步</b><p>最后落到今晚还能完成的一件小事。</p></article>
+        </div>
       </div>
-      <p class="center-note">先写出一个具体瞬间，再决定它属于哪个心理主题。</p>`
+      <div class="topic-gate"><b>可进入脚本的选题</b><span>生活中发生过</span><span>一句话说得清</span><span>画面拍得出</span><span>结尾有行动</span></div>`
   },
   {
     section: 'AI视频工作流介绍',
     title: '脚本写作与分镜控制',
-    layout: 'split',
+    layout: 'script-storyboard',
+    lead: '脚本确定故事怎样变化，分镜把变化拆成可以生成和剪辑的画面。',
     html: `
-      <div class="two-lanes script-lanes">
-        <article><small>脚本回答</small><b>这件事为什么值得看</b><ul><li>谁遇到了什么</li><li>情绪在哪里发生变化</li><li>最后留下什么行动</li></ul></article>
-        <article class="accent"><small>分镜回答</small><b>观众具体看见什么</b><ul><li>景别与机位</li><li>角色动作与表情</li><li>每个镜头的时长与连接</li></ul></article>
+      <div class="script-storyboard-layout">
+        <figure><img src="assets/generated/duck-script-storyboard-control-v1.jpg" alt="三只鸭鸭把同一段脚本拆成连续分镜和批准关键帧"></figure>
+        <div class="script-storyboard-copy">
+          <article><small>脚本确定</small><b>角色、冲突、变化、结尾行动</b><p>饭团醒来发现计划被打乱；她从“今天全毁了”走到“今晚先完成一件事”。</p></article>
+          <article class="accent"><small>分镜确定</small><b>景别、动作、时长、镜头连接</b><p>每个镜头只承担一个主要信息，保证图片能定、视频能动、剪辑能接。</p></article>
+          <div class="shot-sequence"><span><i>01</i>中景交代宿舍与时间</span><span><i>02</i>近景看见计划本与表情</span><span><i>03</i>三人镜头完成行动变化</span></div>
+        </div>
       </div>
-      <p class="bottom-callout">一段脚本可以对应多个镜头，一个镜头只承担一个主要任务。</p>`
+      <p class="bottom-callout"><b>一段脚本可以拆成多个镜头；一个镜头只承担一个主要任务。</b></p>`
   },
   {
     section: 'AI视频工作流介绍',
     title: '分镜提示词控制',
-    layout: 'formula',
+    layout: 'prompt-control',
     lead: '提示词要把导演判断翻译成模型可以执行的信息。',
     html: `
-      <div class="prompt-formula"><span>主体</span><i>＋</i><span>场景</span><i>＋</i><span>镜头</span><i>＋</i><span>动作</span><i>＋</i><span>光线</span><i>＋</i><span>连续性</span></div>
-      <div class="prompt-example"><small>示例</small><p>饭团站在傍晚宿舍床边，中近景固定机位，先低头看计划本，再轻轻叹气，暖黄台灯，蓝色领巾与上一镜一致。</p></div>
-      <p class="table-note">“电影感、震撼、高级”无法替代具体的主体、空间、动作和镜头。</p>`
+      <div class="prompt-control-layout">
+        <figure><img src="assets/generated/duck-mental-microstory-v1.jpg" alt="饭团在傍晚宿舍经历计划被打乱的具体场景"></figure>
+        <div class="prompt-control-copy">
+          <div class="prompt-parts">
+            <span><b>主体</b>饭团</span><span><b>场景</b>傍晚宿舍床边</span><span><b>镜头</b>中近景固定机位</span>
+            <span><b>动作</b>看计划本后轻叹气</span><span><b>光线</b>暖黄台灯＋窗外夕光</span><span><b>连续性</b>蓝领巾与计划本位置不变</span>
+          </div>
+          <div class="prompt-example"><small>组合以后</small><p><span>饭团</span><span>傍晚宿舍床边</span><span>中近景固定机位</span><span>先低头看计划本</span><span>再轻轻叹气</span><span>暖黄台灯</span><span>蓝色领巾与上一镜一致</span></p></div>
+          <p class="prompt-warning">“电影感、震撼、高级”不能替代具体的主体、空间、动作和镜头。</p>
+        </div>
+      </div>`
   },
   {
     section: 'AI视频工作流介绍',
     title: '分镜视频生成',
-    layout: 'process',
+    layout: 'generation-control',
+    lead: '先锁定关键帧，再用同一份输入生成候选；错误属于哪一类，就退回哪一步。',
     html: `
-      <div class="generation-steps">
-        <article><b>先检查关键帧</b><p>角色、构图和道具不对时，不急着让它动。</p></article>
-        <article><b>一镜一个动作</b><p>短时长先完成主要表演，减少互相打架。</p></article>
-        <article><b>写清运动关系</b><p>谁动、怎样动、镜头是否跟随、声音何时发生。</p></article>
-        <article><b>按错误类型返工</b><p>身份错回图片，动作错改视频，节奏错留给剪辑。</p></article>
+      <div class="generation-control-layout">
+        <figure><img src="assets/generated/duck-video-generation-review-v1.jpg" alt="三只鸭鸭比较同一关键帧生成的多个视频候选并选出可用镜头"></figure>
+        <div class="generation-control-copy">
+          <article><strong>01</strong><b>关键帧先通过</b><p>角色、构图、道具不对时，先回图片环节修改。</p></article>
+          <article><strong>02</strong><b>一镜一个主动作</b><p>先完成“低头—看计划本—叹气”，不要同时塞进多段表演。</p></article>
+          <article><strong>03</strong><b>同一输入出多个候选</b><p>比较稳定性和可剪辑性，不把第一条结果当成答案。</p></article>
+          <article><strong>04</strong><b>按错误类型返工</b><p>身份错回图片；动作错改视频；节奏问题进入剪辑。</p></article>
+        </div>
       </div>`
   },
   {
     section: 'AI视频工作流介绍',
     title: '整体调整与剪辑',
-    layout: 'editor',
+    layout: 'editing-control',
+    lead: '生成模型提供素材，剪辑决定哪些素材真正进入成片。',
     html: `
-      <div class="editor-timeline">
-        <div class="track video"><span>镜头1</span><span>镜头2</span><span>镜头3</span><span>镜头4</span></div>
-        <div class="track audio"><span>对白</span><span>环境音</span><span>音乐</span></div>
-        <div class="track text"><span>字幕</span><span>知识卡</span><span>片尾</span></div>
+      <div class="editing-control-layout">
+        <figure><img src="assets/generated/duck-editing-room-v1.jpg" alt="三只鸭鸭在剪辑室选择镜头、整理声音和审核成片"></figure>
+        <div class="editing-decision-stack">
+          <article><span>选择</span><b>只留下服务故事的镜头</b><p>最惊艳的画面如果破坏角色或节奏，也要删除。</p></article>
+          <article><span>删减</span><b>去掉漂移、重复与拖沓</b><p>短视频里每一秒都要推动信息或情绪。</p></article>
+          <article><span>统一</span><b>画幅、颜色、响度和字幕</b><p>不同模型产生的片段最终要像同一条视频。</p></article>
+          <article><span>复核</span><b>知识边界、版权和平台规格</b><p>发布前完成最后一次人工责任检查。</p></article>
+        </div>
       </div>
-      <div class="edit-checks"><span>删掉不稳定镜头</span><span>统一节奏与颜色</span><span>补声音与字幕</span><span>复查知识边界</span></div>
-      <p class="center-note">剪辑决定哪些生成结果真正留到成片里，也决定观众最后看见什么。</p>`
+      <div class="editing-tracks"><span>画面｜镜头1 · 镜头2 · 镜头3 · 镜头4</span><span>声音｜对白 · 环境音 · 音乐</span><span>文字｜字幕 · 知识卡 · 片尾</span></div>`
   },
   {
     section: 'AI视频工作流介绍',
     title: '发布准备与资料库整理',
-    layout: 'library',
+    layout: 'asset-library',
     lead: '成片只是一次交付，资料库决定下一条能不能接着做。',
     html: `
-      <div class="library-grid">
-        <article><b>IP资源库</b><p>角色板、比例、表情、声音</p></article>
-        <article><b>图片库</b><p>场景、关键帧、封面与批准稿</p></article>
-        <article><b>视频库</b><p>源片、通过镜头、失败镜头</p></article>
-        <article><b>图片提示词库</b><p>角色、场景、构图与修改记录</p></article>
-        <article><b>视频提示词库</b><p>动作、镜头、声音与模型参数</p></article>
+      <div class="asset-library-layout">
+        <figure><img src="assets/generated/duck-asset-library-v1.jpg" alt="三只鸭鸭把角色、图片、视频、提示词和交付文件整理进资料库"></figure>
+        <div class="asset-tree">
+          <article><b>01_IP</b><span>角色板 · 比例 · 表情 · 声音</span></article>
+          <article><b>02_IMAGE</b><span>场景 · 关键帧 · 封面 · 批准稿</span></article>
+          <article><b>03_VIDEO</b><span>源片 · 通过镜头 · 失败镜头</span></article>
+          <article><b>04_PROMPT</b><span>图片/视频提示词 · 参数 · 修改原因</span></article>
+          <article class="accent"><b>05_DELIVERY</b><span>横竖版 · 字幕 · 文案 · 授权与来源</span></article>
+        </div>
       </div>
-      <div class="publish-strip"><span>成片规格</span><span>封面与标题</span><span>字幕与文案</span><span>授权与来源</span><span>文件索引</span></div>`
+      <div class="asset-rule"><b>文件名必须能让下一位同学接手。</b><span>期数_镜号_版本_状态，例如 EP05_S03_v04_APPROVED。</span></div>`
   },
   {
     section: 'AI视频工作流介绍',
     title: 'T+3 / T+7 / T+14',
-    layout: 'timeline-short',
-    lead: '发布以后继续观察，账号才会积累自己的内容方法。',
+    layout: 'review-loop',
+    lead: '发布以后进入三次复盘，把观众反应变成下一期可执行的修改。',
     html: `
-      <div class="review-timeline">
-        <article><time>T+3</time><b>先看第一反应</b><p>停留、完播、评论在问什么，是否看懂主题。</p></article>
-        <article><time>T+7</time><b>看内容结构</b><p>哪一段留住人，哪一段让人离开，哪些话被转发。</p></article>
-        <article><time>T+14</time><b>决定是否复用</b><p>角色、栏目、标题和镜头做法哪些值得留下。</p></article>
-      </div>`
+      <div class="review-loop-layout">
+        <figure><img src="assets/generated/duck-content-review-v1.jpg" alt="三只鸭鸭根据发布后的观看、评论与留存数据复盘下一期内容"></figure>
+        <div class="review-stage-stack">
+          <article><time>T+3</time><b>确认观众是否看懂</b><p>看停留、完播和评论；记录主题误读与高频问题。</p></article>
+          <article><time>T+7</time><b>找出有效与失效的段落</b><p>对照留存曲线、转发点和评论，定位具体镜头与台词。</p></article>
+          <article><time>T+14</time><b>写进下一期制作规则</b><p>明确保留、调整或停止的栏目、标题与镜头做法。</p></article>
+        </div>
+      </div>
+      <div class="review-loop-rule"><span>发布</span><i>→</i><span>观察</span><i>→</i><span>定位</span><i>→</i><span>修改规则</span><i>→</i><span>下一期</span></div>`
   },
   {
     section: '热门作品解析',

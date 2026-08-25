@@ -21,6 +21,7 @@ TEST_DB_PATH = pathlib.Path(tempfile.gettempdir()) / "neovista_monitoring_ingest
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 os.environ.setdefault("ADMIN_SECRET_KEY", "test-admin-secret")
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH}"
+os.environ.setdefault("IMAGE_GENERATION_FEATURE_ENABLED", "true")
 
 import auth as auth_module
 import database as database_module
@@ -172,6 +173,15 @@ class MonitoringEventIngestTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(events[0].route, "/workspace")
             self.assertEqual(events[0].user_id, self.user.id)
 
+    def test_frontend_error_endpoint_requires_authentication(self):
+        response = self.client.post(
+            "/api/v1/frontend-errors",
+            json={"route": "/workspace", "message": "boom"},
+        )
+        self.assertEqual(response.status_code, 401)
+        with self.Session() as session:
+            self.assertEqual(session.query(FrontendErrorEvent).count(), 0)
+
     async def test_generate_failure_persists_generation_event(self):
         request = main.GenerateRequest(
             template_id=None,
@@ -184,20 +194,29 @@ class MonitoringEventIngestTest(unittest.IsolatedAsyncioTestCase):
         with patch.object(
             main,
             "API_CHANNELS",
-            (main.APIChannel(name="Test", base_url="https://example.com", api_key="key", model="gemini"),),
+            (
+                main.APIChannel(
+                    name="Test",
+                    base_url="https://example.com",
+                    api_key="key",
+                    model="gemini",
+                    product_model="nano-banana-2",
+                ),
+            ),
         ):
             with patch.object(main.httpx, "AsyncClient", lambda timeout=60.0: _FakeAsyncClient(_error_response(503))):
                 with self.assertRaises(main.HTTPException):
                     await main.generate_image(request, self.user, self.db)
 
-        event = (
+        events = (
             self.db.query(GenerationEvent)
             .filter(GenerationEvent.request_id == "req-monitoring-1")
-            .first()
+            .order_by(GenerationEvent.id.asc())
+            .all()
         )
-        self.assertIsNotNone(event)
-        self.assertEqual(event.status, "FAILED")
-        self.assertIsNotNone(event.error_code)
+        self.assertEqual([event.status for event in events], ["REVIEW_REQUIRED"])
+        self.assertEqual(events[-1].error_code, "UPSTREAM_HTTP_503")
+        self.assertNotIn("upstream failed", events[-1].error_message)
 
 
 if __name__ == "__main__":

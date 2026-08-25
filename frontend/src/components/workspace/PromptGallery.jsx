@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppStore } from '../../store/useAppStore';
-import { X, Copy, Check } from 'lucide-react';
+import { X } from 'lucide-react';
 import ImageCarousel from './ImageCarousel';
+import TemplatePromptPreview from './TemplatePromptPreview.jsx';
 import {
+  getTemplateCarouselImages,
   getNextVisibleCount,
   INITIAL_GALLERY_VISIBLE_COUNT,
 } from '../../lib/galleryPerformance.js';
@@ -10,7 +12,6 @@ import {
 export default function PromptGallery({ onClose }) {
   const [templates, setTemplates] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('全部');
-  const [copiedId, setCopiedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [visibleCount, setVisibleCount] = useState(INITIAL_GALLERY_VISIBLE_COUNT);
   const loadMoreRef = useRef(null);
@@ -67,12 +68,6 @@ export default function PromptGallery({ onClose }) {
     onClose();
   };
 
-  const handleCopy = (id, prompt) => {
-    navigator.clipboard.writeText(prompt);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
       <div className="flex h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border" style={{ background: 'var(--surface-1)', borderColor: 'var(--border-subtle)', boxShadow: 'var(--shadow-soft)' }}>
@@ -114,27 +109,21 @@ export default function PromptGallery({ onClose }) {
             <div style={{ columnCount: 3, columnGap: '1.5rem' }}>
               {visibleTemplates.map((template, index) => (
                 <div key={template.id} className="mb-6 overflow-hidden rounded-xl border transition hover:-translate-y-0.5" style={{ breakInside: 'avoid', background: 'var(--surface-0)', borderColor: 'var(--border-subtle)' }}>
-                  <ImageCarousel images={template.images} cardIndex={index} />
+                  <ImageCarousel images={getTemplateCarouselImages(template)} cardIndex={index} />
                   <div className="p-4">
                     <h3 className="mb-2 text-sm font-semibold text-white/85">{template.title}</h3>
                     <p className="mb-4 line-clamp-3 text-sm leading-6 text-white/50">
                       {template.tips || template.display_text?.slice(0, 100) || template.real_prompt?.slice(0, 100)}
                     </p>
-                    <div className="flex gap-2">
+                    <div className="space-y-2">
                       <button
                         onClick={() => handleUsePrompt(template)}
-                        className="flex-1 rounded-lg px-3 py-2 text-sm text-white transition active:scale-[0.98]"
+                        className="w-full rounded-lg px-3 py-2 text-sm text-white transition active:scale-[0.98]"
                         style={{ background: 'var(--accent-primary)' }}
                       >
                         使用此模板
                       </button>
-                      <button
-                        onClick={() => handleCopy(template.id, template.display_text || template.real_prompt || '')}
-                        className="rounded-lg border px-3 py-2 text-white/60 transition hover:bg-white/10"
-                        style={{ borderColor: 'var(--border-subtle)' }}
-                      >
-                        {copiedId === template.id ? <Check size={16} className="text-green-400" /> : <Copy size={16} />}
-                      </button>
+                      <TemplatePromptPreview templateId={template.id} />
                     </div>
                   </div>
                 </div>

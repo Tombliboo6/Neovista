@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from typing import Optional, List, Tuple, Union
+from typing import Literal, Optional, List, Tuple, Union
 from sqlalchemy import func, inspect as sqlalchemy_inspect, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -73,6 +73,10 @@ from rate_limit_service import (
     extract_client_ip,
 )
 from template_api_utils import serialize_template_summary
+from template_prompt_utils import (
+    build_effective_diagram_prompt as _build_effective_diagram_prompt,
+    build_effective_template_prompt as _build_effective_template_prompt,
+)
 from runtime_security import (
     is_production_runtime,
     require_distinct_runtime_secrets,
@@ -317,6 +321,20 @@ class GenerateDiagramResponse(BaseModel):
     charged_credits: int
     remaining_credits: int
     request_id: str
+
+
+class TemplatePromptPreviewRequest(BaseModel):
+    user_params: Optional[str] = Field(default=None, max_length=12000)
+    parameters: Optional[dict] = None
+    custom_prompt_structure: Optional[dict] = None
+    generation_mode: Literal["generate", "generate_diagram"] = "generate"
+
+
+class TemplatePromptPreviewResponse(BaseModel):
+    template_id: str
+    template_name: str
+    effective_prompt: str
+    prompt_structure: Optional[dict] = None
 
 
 class AdminImageSettlementRequest(BaseModel):
@@ -1154,7 +1172,7 @@ def _build_openai_image_edit_files(reference_images: Optional[List[str]] = None)
     files: List[Tuple[str, Tuple[str, bytes, str]]] = []
     for index, image_data in enumerate(_normalize_reference_images(image_datas=reference_images), start=1):
         filename, raw_bytes, mime_type = _decode_reference_image_upload(image_data, index=index)
-        files.append(("image", (filename, raw_bytes, mime_type)))
+        files.append(("image[]", (filename, raw_bytes, mime_type)))
     return files
 
 
@@ -3741,6 +3759,50 @@ async def get_template_detail(template_id: str):
     except Exception:
         raise HTTPException(status_code=500, detail="模版服务暂时不可用")
 
+
+@app.post(
+    "/api/v1/templates/{template_id}/prompt-preview",
+    response_model=TemplatePromptPreviewResponse,
+)
+async def preview_template_prompt(
+    template_id: str,
+    request: TemplatePromptPreviewRequest,
+    current_user: User = Depends(get_current_user),
+):
+    del current_user
+    try:
+        with open("templates_v2.json", "r", encoding="utf-8") as template_file:
+            templates = json.load(template_file)
+        template = next((item for item in templates if item.get("id") == template_id), None)
+        if not template:
+            raise HTTPException(status_code=404, detail="模版不存在")
+
+        if request.generation_mode == "generate_diagram":
+            effective_prompt = _build_effective_diagram_prompt(
+                template,
+                parameters=request.parameters,
+            )
+            prompt_structure = None
+        else:
+            effective_prompt, prompt_structure = _build_effective_template_prompt(
+                template,
+                user_params=request.user_params,
+                custom_prompt_structure=request.custom_prompt_structure,
+                parameters=request.parameters,
+            )
+        if not effective_prompt:
+            raise HTTPException(status_code=422, detail="模版提示词为空，请联系管理员补充")
+        return TemplatePromptPreviewResponse(
+            template_id=template_id,
+            template_name=template.get("title", template_id),
+            effective_prompt=effective_prompt,
+            prompt_structure=prompt_structure,
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="提示词预览失败")
+
 def _keyword_match(query: str, templates: list):
     """关键词匹配降级方案"""
     query_lower = query.lower()
@@ -4946,29 +5008,11 @@ async def generate_image(
             if not template:
                 raise HTTPException(status_code=404, detail="模版不存在")
 
-            # 新逻辑：用户提供信息 → 使用 prompt_structure；没提供 → 使用 real_prompt
-            if request.user_params or request.custom_prompt_structure:
-                # 优先使用 custom_prompt_structure，否则使用模板的 prompt_structure
-                ps = request.custom_prompt_structure if request.custom_prompt_structure else template.get('prompt_structure', {})
-
-                # 确保 ps 是字典类型
-                if not isinstance(ps, dict):
-                    ps = template.get('prompt_structure', {})
-
-                prompt_parts = []
-                for key in ['p0_text', 'p1_user', 'p1_content', 'p2_lighting', 'p3_composition', 'p4_rendering']:
-                    value = ps.get(key, '').strip()
-                    if value and value not in ['{user_input}', '{title}', '标题：{title}，数据标注：{data}，字体：无衬线黑体', '自然光照，柔和阴影', '标准构图', '高质量渲染']:
-                        prompt_parts.append(value)
-                base_prompt = '\n\n'.join(prompt_parts)
-
-                if request.user_params:
-                    enhanced_prompt = f"{base_prompt}\n\n用户补充: {request.user_params}"
-                else:
-                    enhanced_prompt = base_prompt
-
-            else:
-                enhanced_prompt = template.get('real_prompt', '').strip()
+            enhanced_prompt, _ = _build_effective_template_prompt(
+                template,
+                user_params=request.user_params,
+                custom_prompt_structure=request.custom_prompt_structure,
+            )
         else:
             # 无模板：自由生图模式
             if not request.user_params:
@@ -5185,25 +5229,8 @@ async def generate_diagram(
         if not template:
             raise HTTPException(status_code=404, detail="模版不存在")
 
-        # 4. 组装 Prompt
-        base_prompt = template.get('real_prompt', '').strip()
-        if not base_prompt:
-            ps = template.get('prompt_structure', {})
-            parts = []
-            for key in ['p0_text', 'p1_user', 'p1_content', 'p2_lighting', 'p3_composition', 'p4_rendering']:
-                val = ps.get(key, '').strip()
-                if val:
-                    parts.append(val)
-            base_prompt = '\n\n'.join(parts)
-
-        # 替换占位符
-        final_prompt = base_prompt.replace('{title}', collected.get('title', ''))
-        final_prompt = final_prompt.replace('{data}', collected.get('data', ''))
-        final_prompt = final_prompt.replace('{user_input}', collected.get('user_input', ''))
-
-        # 强制添加负面提示词
-        negative_prompt = "neon lights, glowing effects, over-rendered, chaotic lines, cinematic lighting, messy, cyberpunk, dark background"
-        final_prompt = f"{final_prompt}\n\n负面提示词: {negative_prompt}"
+        # 4. 组装与预览接口完全一致的 Prompt
+        final_prompt = _build_effective_diagram_prompt(template, parameters=collected)
 
         # 5. 构建 API 请求
         parts = [{"text": final_prompt}]

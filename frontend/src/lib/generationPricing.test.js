@@ -11,15 +11,15 @@ test('nano banana 2 pricing matches billing rules', () => {
   });
 });
 
-test('nano banana pro adds 30 credits per image at each resolution', () => {
+test('unsupported image models never invent a price surcharge', () => {
   assert.deepEqual(getResolutionPricing('nano-banana-pro'), {
-    '1K': 60,
-    '2K': 80,
-    '4K': 120,
+    '1K': 30,
+    '2K': 50,
+    '4K': 90,
   });
 });
 
-test('generation cost scales linearly with image count for each model', () => {
-  assert.equal(calculateGenerationCost('2K', 3, 'nano-banana-2'), 150);
-  assert.equal(calculateGenerationCost('4K', 2, 'nano-banana-pro'), 240);
+test('legacy estimator is single-image only while live prices come from capabilities', () => {
+  assert.equal(calculateGenerationCost('2K', 3, 'nano-banana-2'), 50);
+  assert.equal(calculateGenerationCost('4K', 2, 'nano-banana-pro'), 90);
 });

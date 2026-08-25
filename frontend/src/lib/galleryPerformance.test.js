@@ -6,7 +6,10 @@ import {
   getImageLoadingStrategy,
   getNextVisibleCount,
   getPrimaryTemplateImage,
+  getTemplateCarouselImages,
+  getTemplatePreviewImage,
 } from './galleryPerformance.js';
+import { GALLERY_ASSET_RELEASE } from './galleryAssets.js';
 
 test('getPrimaryTemplateImage prefers the last gallery image and tolerates empty input', () => {
   assert.equal(getPrimaryTemplateImage([]), null);
@@ -36,4 +39,44 @@ test('getImageLoadingStrategy keeps only the first few cards eager', () => {
 
 test('getGalleryApiEndpoint uses the compact v1 template summary API', () => {
   assert.equal(getGalleryApiEndpoint(), '/api/v1/templates');
+});
+
+test('getTemplatePreviewImage prefers generated thumbnails over original images', () => {
+  assert.equal(
+    getTemplatePreviewImage({
+      thumbnail_image: '/api/v1/template-thumbnails/demo.webp',
+      images: ['/static/template_images/original.png'],
+    }),
+    `/api/v1/template-thumbnails/demo.webp?gallery_v=${GALLERY_ASSET_RELEASE}`,
+  );
+  assert.equal(
+    getTemplatePreviewImage({ images: ['/a.png', '/b.png'] }),
+    '/b.png',
+  );
+  assert.equal(getTemplatePreviewImage({ images: [] }), null);
+  assert.equal(
+    getTemplatePreviewImage({ images: ['/gallery/image1.png'] }),
+    `/gallery/image1.png?gallery_v=${GALLERY_ASSET_RELEASE}`,
+  );
+});
+
+test('getTemplateCarouselImages keeps modal cards on thumbnails when available', () => {
+  assert.deepEqual(
+    getTemplateCarouselImages({
+      thumbnail_image: '/api/v1/template-thumbnails/demo.webp',
+      images: ['/static/template_images/original.png'],
+    }),
+    [`/api/v1/template-thumbnails/demo.webp?gallery_v=${GALLERY_ASSET_RELEASE}`],
+  );
+  assert.deepEqual(
+    getTemplateCarouselImages({ images: ['/a.png', '/b.png'] }),
+    ['/a.png', '/b.png'],
+  );
+  assert.deepEqual(
+    getTemplateCarouselImages({ images: ['/gallery/image1.png', '/gallery/image2.png'] }),
+    [
+      `/gallery/image1.png?gallery_v=${GALLERY_ASSET_RELEASE}`,
+      `/gallery/image2.png?gallery_v=${GALLERY_ASSET_RELEASE}`,
+    ],
+  );
 });

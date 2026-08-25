@@ -3,6 +3,9 @@ import { Trash2, CheckCircle, RotateCcw, FileSearch, ThumbsUp, AlertTriangle, Li
 import GenerateParamsModal from './GenerateParamsModal';
 import toast from 'react-hot-toast';
 import { resolveReferenceImages } from '../../lib/referenceImages.js';
+import PromptDisclosure from './PromptDisclosure.jsx';
+import TemplatePromptPreview from './TemplatePromptPreview.jsx';
+import { fetchTemplatePromptPreview } from '../../lib/templatePromptPreview.js';
 
 function AuditCard({ data }) {
   return (
@@ -65,7 +68,6 @@ export default function ChatHistory({ storyMode = false }) {
   const isGenerationCancelable = useAppStore((s) => s.isGenerationCancelable);
   const isWorkspaceChatLoading = useAppStore((s) => s.isWorkspaceChatLoading);
   const setResolution = useAppStore((s) => s.setResolution);
-  const setNumImages = useAppStore((s) => s.setNumImages);
   const auditDiagram = useAppStore((s) => s.auditDiagram);
   const showGenerateModal = useAppStore((s) => s.showGenerateModal);
   const setShowGenerateModal = useAppStore((s) => s.setShowGenerateModal);
@@ -79,10 +81,11 @@ export default function ChatHistory({ storyMode = false }) {
   const addSystemMessage = useAppStore((s) => s.addSystemMessage);
   const uploadedImages = useAppStore((s) => s.uploadedImages);
   const fabricInstance = useAppStore((s) => s.fabricInstance);
+  const token = useAppStore((s) => s.token);
 
   const handleGenerateClick = () => {
     if (!selectedModel) {
-      addSystemMessage('提示：请先在右下角选择生图模型（Nano 2、Nano Pro 或 GPT Image 2.0）');
+      addSystemMessage('提示：请先在右下角选择当前服务器提供的生图模型');
       return;
     }
     setShowGenerateModal(true);
@@ -90,7 +93,6 @@ export default function ChatHistory({ storyMode = false }) {
 
   const handleConfirmGenerate = (params) => {
     setResolution(params.resolution);
-    setNumImages(params.numImages);
     if (activeSkill) {
       generateImage('', activeSkill);
     } else {
@@ -144,6 +146,7 @@ export default function ChatHistory({ storyMode = false }) {
     try {
       const response = await fetch(`/api/v1/templates/${templateId}`);
       const template = await response.json();
+      if (!response.ok) throw new Error(template.detail || '模板信息加载失败');
       const needsImage = template.is_i2i === true;
       const getCanvasImage = () => {
         if (!fabricInstance) return null;
@@ -153,22 +156,18 @@ export default function ChatHistory({ storyMode = false }) {
       };
       const resolvedImages = resolveReferenceImages(uploadedImages, getCanvasImage());
       if (needsImage && resolvedImages.length === 0) { toast.error('该模板需要先上传参考底图（或在画布中放置图片）'); return; }
-      const buildFinalPromptStructure = async (templateId, suggestedParams) => {
-        const response = await fetch(`/api/v1/templates/${templateId}`);
-        const template = await response.json();
-        if (!template.prompt_structure) return null;
-        const finalStructure = { ...template.prompt_structure };
-        Object.keys(finalStructure).forEach(key => {
-          if (typeof finalStructure[key] === 'string') {
-            Object.keys(suggestedParams).forEach(paramKey => {
-              finalStructure[key] = finalStructure[key].replace(new RegExp(`{${paramKey}}`, 'g'), suggestedParams[paramKey] || '');
-            });
-          }
-        });
-        return finalStructure;
-      };
-      const finalStructure = await buildFinalPromptStructure(templateId, suggestedParams);
-      generateImage('', templateId, finalStructure, needsImage ? resolvedImages : null);
+      const preview = await fetchTemplatePromptPreview({
+        templateId,
+        token,
+        parameters: suggestedParams,
+      });
+      generateImage(
+        '',
+        templateId,
+        preview.promptStructure,
+        needsImage ? resolvedImages : null,
+        preview.effectivePrompt,
+      );
     } catch (error) {
       console.error('确认生成失败:', error);
       toast.error('确认生成失败，请重试');
@@ -208,6 +207,12 @@ export default function ChatHistory({ storyMode = false }) {
           <div className="flex gap-2">
             <button onClick={handleGenerateClick} className="flex-1 rounded-lg px-3 py-1.5 text-xs text-white transition active:scale-[0.98]" style={{ background: 'var(--accent-primary)' }}>直接生图</button>
             <button onClick={handleAdjustParams} className="flex-1 px-3 py-1.5 text-white/60 text-xs rounded-lg transition hover:bg-white/10" style={{ border: '1px solid var(--border-subtle)' }}>调整参数</button>
+          </div>
+          <div className="mt-2">
+            <TemplatePromptPreview
+              templateId={activeSkill || suggestedTemplateId}
+              parameters={(activeSkill || suggestedTemplateId) === suggestedTemplateId ? suggestedParams : null}
+            />
           </div>
         </div>
       )}
@@ -256,6 +261,7 @@ export default function ChatHistory({ storyMode = false }) {
                   <div className="space-y-1.5">
                     <img src={msg.imageUrl} alt="" className="w-full rounded-xl object-cover" style={{ maxHeight: '200px' }} />
                     {msg.templateName && <p className="text-xs text-white/25 px-1">模板：{msg.templateName}</p>}
+                    <PromptDisclosure prompt={msg.prompt} />
                     <div className="flex flex-wrap gap-2">
                       <button
                         onClick={() => handleDownloadImage(msg.imageUrl)}

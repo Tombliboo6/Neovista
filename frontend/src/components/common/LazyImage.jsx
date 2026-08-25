@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getVersionedGalleryAssetUrl } from '../../lib/galleryAssets.js';
 
 export default function LazyImage({
   src,
@@ -12,6 +13,7 @@ export default function LazyImage({
   decoding = 'async',
 }) {
   const [isLoaded, setIsLoaded] = useState(false);
+  const resolvedSrc = getVersionedGalleryAssetUrl(src);
 
   return (
     <div
@@ -22,7 +24,7 @@ export default function LazyImage({
         <div className={`absolute inset-0 animate-pulse ${skeletonClassName}`.trim()} />
       )}
       <img
-        src={src}
+        src={resolvedSrc}
         alt={alt}
         loading={loading}
         fetchPriority={fetchPriority}

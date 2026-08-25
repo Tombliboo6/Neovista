@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { Check, Copy, Loader2, Ticket } from 'lucide-react';
 
 const CREDITS_PER_YUAN = 100;
+const MAX_CREDITS_PER_CODE = 100_000;
+const MAX_BATCH_COUNT = 100;
 const amountPresets = [5, 10, 20, 50];
 
 function buildDefaultBatch(amountYuan) {
@@ -39,8 +41,17 @@ export default function AdminRedemptionCodesPage() {
   const handleGenerate = async (event) => {
     event.preventDefault();
     const adminToken = localStorage.getItem('adminToken');
+    const userToken = localStorage.getItem('token');
+    if (!userToken) {
+      localStorage.removeItem('adminToken');
+      setError('登录状态已失效，请重新登录后再试。');
+      setGeneratedCodes([]);
+      return;
+    }
     if (!adminToken) {
-      window.location.reload();
+      localStorage.removeItem('adminToken');
+      setError('管理员令牌缺失，请重新验证管理员权限。');
+      setGeneratedCodes([]);
       return;
     }
 
@@ -53,6 +64,7 @@ export default function AdminRedemptionCodesPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${userToken}`,
           'x-admin-token': adminToken,
         },
         body: JSON.stringify({
@@ -63,9 +75,18 @@ export default function AdminRedemptionCodesPage() {
         }),
       });
 
+      if (response.status === 401) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('adminToken');
+        setError('登录状态已失效，请重新登录后再试。');
+        setGeneratedCodes([]);
+        return;
+      }
+
       if (response.status === 403) {
         localStorage.removeItem('adminToken');
-        window.location.reload();
+        setError('管理员权限验证失败，请重新确认管理员账号和令牌。');
+        setGeneratedCodes([]);
         return;
       }
 
@@ -135,6 +156,7 @@ export default function AdminRedemptionCodesPage() {
               <input
                 type="number"
                 min="1"
+                max={MAX_CREDITS_PER_CODE}
                 value={credits}
                 onChange={handleCreditsChange}
                 className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900"
@@ -147,7 +169,7 @@ export default function AdminRedemptionCodesPage() {
               <input
                 type="number"
                 min="1"
-                max="200"
+                max={MAX_BATCH_COUNT}
                 value={count}
                 onChange={(event) => setCount(Number(event.target.value))}
                 className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900"

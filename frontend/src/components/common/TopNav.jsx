@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Globe, Crown, User, LogOut } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Globe, Crown, PanelsTopLeft, LogOut } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import AuthModal from '../auth/AuthModal';
 import RedeemModal from '../billing/RedeemModal';
@@ -11,9 +12,25 @@ export default function TopNav() {
   return (
     <>
       <nav className="fixed top-0 left-0 right-0 z-50 flex h-16 items-center justify-between border-b border-white/[0.06] bg-surface-0/80 px-4 backdrop-blur-md sm:px-6">
-        <div className="flex items-baseline gap-3">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <div className="font-display text-xl font-semibold text-white/90">NeoVista</div>
-          <div className="hidden text-[11px] uppercase text-white/30 md:block">AIGC Analysis Studio</div>
+          <Link
+            to="/workspace"
+            data-testid="professional-canvas-entry"
+            aria-label="进入专业画布"
+            title="专业画布"
+            className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-medium transition hover:bg-white/[0.08] active:scale-[0.98] sm:px-3 sm:text-sm"
+            style={{
+              borderColor: 'var(--border-strong)',
+              background: 'var(--surface-1)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            <PanelsTopLeft size={15} />
+            <span className="sm:hidden">画布</span>
+            <span className="hidden sm:inline">专业画布</span>
+          </Link>
+          <div className="hidden text-[11px] uppercase text-white/30 lg:block">AIGC Analysis Studio</div>
         </div>
 
         <div className="flex items-center gap-2 sm:gap-4">
@@ -59,7 +76,7 @@ export default function TopNav() {
 
           {user ? (
             <div className="flex items-center gap-3">
-              <div className="text-sm text-right">
+              <div className="hidden text-right text-sm sm:block">
                 <div className="max-w-32 truncate text-white/80">{user.email}</div>
                 <div className="text-xs text-white/40">算力点: {user.credits}</div>
               </div>

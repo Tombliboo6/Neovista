@@ -14,13 +14,13 @@ function shouldReport(key) {
 
 function postFrontendError(payload) {
   const token = localStorage.getItem('token');
+  if (!token) {
+    return;
+  }
   const headers = {
     'Content-Type': 'application/json',
+    authorization: `Bearer ${token}`,
   };
-
-  if (token) {
-    headers.authorization = `Bearer ${token}`;
-  }
 
   fetch('/api/v1/frontend-errors', {
     method: 'POST',

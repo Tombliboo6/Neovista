@@ -10,7 +10,28 @@ import httpx
 from typing import List, Optional, Tuple
 from functools import lru_cache
 from pydantic import BaseModel
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
+
+
+SAFE_CHAT_REJECTION_STATUS_CODES = frozenset({
+    400,
+    401,
+    403,
+    404,
+    405,
+    413,
+    415,
+    422,
+    429,
+})
+
+
+class ChatProviderError(RuntimeError):
+    """Sanitized provider failure with an explicit replay-safety disposition."""
+
+    def __init__(self, *, safe_to_retry: bool, failure_kind: str):
+        super().__init__("Chat service temporarily unavailable")
+        self.safe_to_retry = safe_to_retry
+        self.failure_kind = failure_kind
 
 
 class ChatChannel(BaseModel):
@@ -95,12 +116,7 @@ def init_chat_channels():
     PRO_CHAT_CHANNELS = get_pro_chat_channels()
 
     print(f"✅ 已加载 {len(FLASH_CHAT_CHANNELS)} 个Flash Chat渠道")
-    for ch in FLASH_CHAT_CHANNELS:
-        print(f"  - [Flash] {ch.name}: {ch.base_url}")
-
     print(f"✅ 已加载 {len(PRO_CHAT_CHANNELS)} 个Pro Chat渠道")
-    for ch in PRO_CHAT_CHANNELS:
-        print(f"  - [Pro] {ch.name}: {ch.base_url}")
 
 
 def should_use_pro(image_data: Optional[str]) -> bool:
@@ -125,13 +141,26 @@ def select_workspace_chat_model(agent_mode: bool, has_reference_images: bool = F
     return "pro" if agent_mode or has_reference_images else "flash"
 
 
-def is_retryable_http_error(exception):
-    """只重试网络层错误和特定 HTTP 状态码"""
-    if isinstance(exception, (httpx.ReadTimeout, httpx.ConnectError, httpx.NetworkError)):
-        return True
+def _chat_failure_disposition(exception: Exception) -> Tuple[bool, str]:
+    """Return whether a fresh request is provably safe after this failure.
+
+    Connect/pool acquisition failures happen before a request can be accepted.
+    Explicit client-side rejection statuses are also treated as not accepted.
+    Read/write/transport failures, 5xx responses, and malformed success bodies are
+    submission-ambiguous and must never be replayed automatically.
+    """
+    if isinstance(exception, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)):
+        return True, "not_sent"
     if isinstance(exception, httpx.HTTPStatusError):
-        return exception.response.status_code in (502, 503, 504)
-    return False
+        response = exception.response
+        if response is not None and response.status_code in SAFE_CHAT_REJECTION_STATUS_CODES:
+            return True, "rejected"
+    return False, "unknown"
+
+
+def _provider_failure_log_label(exception: Exception, failure_kind: str) -> str:
+    """Build a bounded label without serializing provider messages or requests."""
+    return f"{type(exception).__name__}/{failure_kind}"
 
 
 def _resolve_chat_url(channel: ChatChannel) -> str:
@@ -144,11 +173,6 @@ def _resolve_chat_url(channel: ChatChannel) -> str:
     return f"{base}/v1/chat/completions"
 
 
-@retry(
-    stop=stop_after_attempt(2),
-    wait=wait_exponential(multiplier=1, min=1, max=3),
-    retry=retry_if_exception(is_retryable_http_error)
-)
 async def _call_openai_compat(
     channel: ChatChannel, model: str, messages: List[dict], timeout: float = 30.0
 ) -> str:
@@ -170,11 +194,6 @@ async def _call_openai_compat(
         return data["choices"][0]["message"]["content"]
 
 
-@retry(
-    stop=stop_after_attempt(2),
-    wait=wait_exponential(multiplier=1, min=1, max=3),
-    retry=retry_if_exception(is_retryable_http_error)
-)
 async def _call_openai_compat_json(
     channel: ChatChannel, model: str, messages: List[dict], timeout: float = 30.0
 ) -> str:
@@ -197,11 +216,6 @@ async def _call_openai_compat_json(
         return data["choices"][0]["message"]["content"]
 
 
-@retry(
-    stop=stop_after_attempt(2),
-    wait=wait_exponential(multiplier=1, min=1, max=3),
-    retry=retry_if_exception(is_retryable_http_error)
-)
 async def _call_openai_compat_multimodal_image(
     channel: ChatChannel,
     model: str,
@@ -243,11 +257,6 @@ async def _call_openai_compat_multimodal_image(
         return data["choices"][0]["message"]["content"]
 
 
-@retry(
-    stop=stop_after_attempt(2),
-    wait=wait_exponential(multiplier=1, min=1, max=3),
-    retry=retry_if_exception(is_retryable_http_error)
-)
 async def _call_openai_compat_multimodal_prompt(
     channel: ChatChannel,
     model: str,
@@ -298,20 +307,26 @@ async def chat_flash(messages: List[dict], json_mode: bool = False) -> str:
     if not FLASH_CHAT_CHANNELS:
         raise RuntimeError("未配置任何 Chat 渠道")
 
-    last_error = None
+    last_failure_kind = "unknown"
     for ch in FLASH_CHAT_CHANNELS:
         try:
-            print(f"[Flash] 尝试渠道: {ch.name}")
             caller = _call_openai_compat_json if json_mode else _call_openai_compat
             result = await caller(ch, ch.model, messages)
-            print(f"[Flash] 渠道 {ch.name} 成功")
+            print("[Flash] Chat 调用成功")
             return result
-        except Exception as e:
-            print(f"⚠️  [Flash] 渠道 {ch.name} 失败: {e}")
-            last_error = e
-            continue
+        except Exception as error:
+            safe_to_retry, last_failure_kind = _chat_failure_disposition(error)
+            print(
+                "⚠️  [Flash] Chat 调用失败: "
+                f"{_provider_failure_log_label(error, last_failure_kind)}"
+            )
+            if not safe_to_retry:
+                raise ChatProviderError(
+                    safe_to_retry=False,
+                    failure_kind=last_failure_kind,
+                ) from None
 
-    raise RuntimeError(f"所有 Chat 渠道均失败: {last_error}")
+    raise ChatProviderError(safe_to_retry=True, failure_kind=last_failure_kind)
 
 
 async def chat_pro(messages: List[dict]) -> str:
@@ -319,19 +334,25 @@ async def chat_pro(messages: List[dict]) -> str:
     if not PRO_CHAT_CHANNELS:
         raise RuntimeError("未配置任何 Chat 渠道")
 
-    last_error = None
+    last_failure_kind = "unknown"
     for ch in PRO_CHAT_CHANNELS:
         try:
-            print(f"[Pro] 尝试渠道: {ch.name}")
             result = await _call_openai_compat(ch, ch.model, messages, timeout=60.0)
-            print(f"[Pro] 渠道 {ch.name} 成功")
+            print("[Pro] Chat 调用成功")
             return result
-        except Exception as e:
-            print(f"⚠️  [Pro] 渠道 {ch.name} 失败: {e}")
-            last_error = e
-            continue
+        except Exception as error:
+            safe_to_retry, last_failure_kind = _chat_failure_disposition(error)
+            print(
+                "⚠️  [Pro] Chat 调用失败: "
+                f"{_provider_failure_log_label(error, last_failure_kind)}"
+            )
+            if not safe_to_retry:
+                raise ChatProviderError(
+                    safe_to_retry=False,
+                    failure_kind=last_failure_kind,
+                ) from None
 
-    raise RuntimeError(f"所有 Chat 渠道均失败: {last_error}")
+    raise ChatProviderError(safe_to_retry=True, failure_kind=last_failure_kind)
 
 
 async def chat_pro_multimodal_json(
@@ -361,10 +382,9 @@ async def chat_pro_multimodal_image(
     if not PRO_CHAT_CHANNELS:
         raise RuntimeError("未配置任何 Chat 渠道")
 
-    last_error = None
+    last_failure_kind = "unknown"
     for ch in PRO_CHAT_CHANNELS:
         try:
-            print(f"[Pro Vision] 尝试渠道: {ch.name}")
             result = await _call_openai_compat_multimodal_image(
                 ch,
                 ch.model,
@@ -373,14 +393,21 @@ async def chat_pro_multimodal_image(
                 timeout=timeout,
                 max_tokens=max_tokens,
             )
-            print(f"[Pro Vision] 渠道 {ch.name} 成功")
+            print("[Pro Vision] Chat 调用成功")
             return result
-        except Exception as e:
-            print(f"⚠️  [Pro Vision] 渠道 {ch.name} 失败: {e}")
-            last_error = e
-            continue
+        except Exception as error:
+            safe_to_retry, last_failure_kind = _chat_failure_disposition(error)
+            print(
+                "⚠️  [Pro Vision] Chat 调用失败: "
+                f"{_provider_failure_log_label(error, last_failure_kind)}"
+            )
+            if not safe_to_retry:
+                raise ChatProviderError(
+                    safe_to_retry=False,
+                    failure_kind=last_failure_kind,
+                ) from None
 
-    raise RuntimeError(f"所有 Chat 渠道均失败: {last_error}")
+    raise ChatProviderError(safe_to_retry=True, failure_kind=last_failure_kind)
 
 
 async def chat_pro_multimodal(
@@ -395,10 +422,9 @@ async def chat_pro_multimodal(
     if not PRO_CHAT_CHANNELS:
         raise RuntimeError("未配置任何 Chat 渠道")
 
-    last_error = None
+    last_failure_kind = "unknown"
     for ch in PRO_CHAT_CHANNELS:
         try:
-            print(f"[Pro Vision Prompt] 尝试渠道: {ch.name}")
             result = await _call_openai_compat_multimodal_prompt(
                 ch,
                 ch.model,
@@ -408,11 +434,18 @@ async def chat_pro_multimodal(
                 max_tokens=max_tokens,
                 json_mode=json_mode,
             )
-            print(f"[Pro Vision Prompt] 渠道 {ch.name} 成功")
+            print("[Pro Vision Prompt] Chat 调用成功")
             return result
-        except Exception as e:
-            print(f"⚠️  [Pro Vision Prompt] 渠道 {ch.name} 失败: {e}")
-            last_error = e
-            continue
+        except Exception as error:
+            safe_to_retry, last_failure_kind = _chat_failure_disposition(error)
+            print(
+                "⚠️  [Pro Vision Prompt] Chat 调用失败: "
+                f"{_provider_failure_log_label(error, last_failure_kind)}"
+            )
+            if not safe_to_retry:
+                raise ChatProviderError(
+                    safe_to_retry=False,
+                    failure_kind=last_failure_kind,
+                ) from None
 
-    raise RuntimeError(f"所有 Chat 渠道均失败: {last_error}")
+    raise ChatProviderError(safe_to_retry=True, failure_kind=last_failure_kind)

@@ -33,11 +33,15 @@ const emptyDashboardState = {
 const numberFormatter = new Intl.NumberFormat('zh-CN');
 
 async function fetchDashboardSection(url, adminToken) {
+  const token = localStorage.getItem('token');
   const response = await fetch(url, {
-    headers: { 'x-admin-token': adminToken },
+    headers: {
+      'x-admin-token': adminToken,
+      'Authorization': `Bearer ${token || ''}`,
+    },
   });
 
-  if (response.status === 403) {
+  if ([401, 403].includes(response.status)) {
     localStorage.removeItem('adminToken');
     window.location.reload();
     throw new Error('管理员令牌无效');

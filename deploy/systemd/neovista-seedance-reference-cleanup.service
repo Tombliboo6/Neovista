@@ -1,0 +1,37 @@
+[Unit]
+Description=NeoVista expired Seedance reference cleanup
+After=local-fs.target
+ConditionPathExists=/var/www/neovista/deploy/scripts/cleanup-seedance-references.sh
+ConditionPathExists=/var/lib/neovista/neovista.db
+
+[Service]
+Type=oneshot
+User=ecs-user
+Group=ecs-user
+UMask=0077
+Environment="APP_ROOT=/var/www/neovista"
+Environment="DATABASE_PATH=/var/lib/neovista/neovista.db"
+ExecStart=/var/www/neovista/deploy/scripts/cleanup-seedance-references.sh --delete --ttl-hours 24
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ReadOnlyPaths=/var/lib/neovista/neovista.db
+ReadWritePaths=/var/www/neovista/backend/static/seedance_references
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=

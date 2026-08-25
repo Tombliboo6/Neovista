@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compileShotGenerationDraft } from './continuityManifest.js';
+import { MAX_SEEDANCE_PROMPT_CHARS } from './canvasGenerationDraft.js';
 
 const connectedGraph = ({ includeReference = true } = {}) => {
   const nodes = [
@@ -82,4 +83,21 @@ test('blocks compilation when a selected identity rule has no character referenc
 
   assert.equal(draft.ok, false);
   assert.ok(draft.errors.some((error) => error.includes('没有参考图')));
+});
+
+test('never silently truncates story context and blocks requests over the provider limit', () => {
+  const { nodes, edges } = connectedGraph();
+  const fullStory = `开场：${'鸭鸭保持角色设定。'.repeat(600)}`;
+  nodes.find((node) => node.id === 'story').data.text = fullStory;
+  const draft = compileShotGenerationDraft({
+    storyboardId: 'storyboard',
+    shot: { id: 'shot-1', prompt: '饭团走入广场', axis: '从左向右', duration: 5 },
+    nodes,
+    edges,
+  });
+
+  assert.equal(draft.ok, false);
+  assert.equal(draft.prompt.includes(fullStory), true);
+  assert.ok(draft.prompt.length > MAX_SEEDANCE_PROMPT_CHARS);
+  assert.ok(draft.errors.some((error) => error.includes('超过 4000 字上限')));
 });

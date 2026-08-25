@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from admin_auth import verify_admin_token
+from admin_auth import verify_admin_access
 from database import get_db
 from models import AlertEvent, FrontendErrorEvent, GenerationEvent, User
 from umami_service import get_traffic_snapshot
@@ -14,7 +14,7 @@ from umami_service import get_traffic_snapshot
 router = APIRouter(
     prefix="/api/v1/admin/dashboard",
     tags=["admin-dashboard"],
-    dependencies=[Depends(verify_admin_token)],
+    dependencies=[Depends(verify_admin_access)],
 )
 
 

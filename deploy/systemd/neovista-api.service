@@ -2,18 +2,71 @@
 Description=NeoVista FastAPI Backend
 Wants=network-online.target
 After=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
-User=ubuntu
-Group=ubuntu
+User=ecs-user
+Group=ecs-user
 WorkingDirectory=/var/www/neovista/backend
 EnvironmentFile=/var/www/neovista/backend/.env
-Environment="PATH=/var/www/neovista/backend/.venv/bin"
-ExecStart=/var/www/neovista/backend/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --proxy-headers
-Restart=always
+Environment="PATH=/var/www/neovista/backend/.venv-current/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONDONTWRITEBYTECODE=1"
+Environment="NEOVISTA_ENV=production"
+Environment="DATABASE_SCHEMA_AUTO_CREATE_ENABLED=false"
+Environment="SEEDANCE_RECONCILER_ENABLED=true"
+ExecStartPre=/usr/bin/test -r /var/www/neovista/backend/.env
+ExecStartPre=/var/www/neovista/deploy/scripts/check-neovista-runtime.sh
+ExecStartPre=/usr/bin/test -w /var/lib/neovista
+ExecStartPre=/usr/bin/test -w /var/www/neovista/backend/static
+ExecStart=/var/www/neovista/backend/.venv-current/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
 RestartSec=3
+TimeoutStartSec=60
+TimeoutStopSec=45
+KillSignal=SIGINT
+KillMode=mixed
 UMask=0077
+
+# The API owns the SQLite state and temporary Seedance reference directory.
+# Source, venv, and .env stay read-only under ProtectSystem=strict.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ReadOnlyPaths=/var/www/neovista/backend/.env
+ReadWritePaths=/var/lib/neovista
+ReadWritePaths=/var/www/neovista/backend/static
+StateDirectory=neovista
+StateDirectoryMode=0750
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+RemoveIPC=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+LimitNOFILE=65536
+TasksMax=512
+
+# Production safety invariant: exactly one Uvicorn process. The API starts the
+# durable DB reconciler in-process; Restart=on-failure resumes persisted tasks.
+# Never add --workers or a second API/reconciler worker or timer without first
+# implementing a distributed lease and proving settlement CAS behaviour. The
+# separate filesystem-only reference cleanup timer never polls or settles tasks.
 
 [Install]
 WantedBy=multi-user.target

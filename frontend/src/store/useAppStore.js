@@ -17,6 +17,7 @@ import {
   persistThemePreference,
 } from '../lib/themeState.js';
 import { normalizeReferenceImages } from '../lib/referenceImages.js';
+import { fetchTemplatePromptPreview } from '../lib/templatePromptPreview.js';
 import {
   createCanvasSafeFabricImage,
   safeCanvasToDataUrl,
@@ -1924,6 +1925,7 @@ export const useAppStore = create((set, get) => ({
       setUser,
       refreshBilling,
       uploadedImages,
+      suggestedParams,
       ensureAuthenticatedForModelAction,
     } = get();
 
@@ -2028,6 +2030,13 @@ export const useAppStore = create((set, get) => ({
         return;
       }
 
+      const promptPreview = await fetchTemplatePromptPreview({
+        templateId: activeSkill || suggestedTemplateId,
+        token,
+        parameters: suggestedParams,
+        generationMode: 'generate_diagram',
+      });
+
       const requestPayload = {
         session_id: homeSessionId,
         base_image: baseImages[0] || null,
@@ -2107,6 +2116,7 @@ export const useAppStore = create((set, get) => ({
         content: '图片已生成！如需调整参数，请直接告诉我。',
         imageUrl,
         templateName: (activeSkill || suggestedTemplateId) ? activeTemplateName : null,
+        prompt: promptPreview.effectivePrompt,
       });
       console.log('准备添加生图消息:', {
         hasImage: Boolean(newMessage.imageUrl),
@@ -2496,7 +2506,13 @@ export const useAppStore = create((set, get) => ({
 
   batchResults: [],
 
-  generateImage: async (userParams = '', templateId = null, customPromptStructure = null, imageDatas = null) => {
+  generateImage: async (
+    userParams = '',
+    templateId = null,
+    customPromptStructure = null,
+    imageDatas = null,
+    effectivePrompt = '',
+  ) => {
     const {
       activeSkill,
       addChatMessage,
@@ -2582,6 +2598,19 @@ export const useAppStore = create((set, get) => ({
         return;
       }
 
+      let resolvedPromptStructure = customPromptStructure;
+      let resolvedEffectivePrompt = String(effectivePrompt || '').trim();
+      if (finalTemplateId && !resolvedEffectivePrompt) {
+        const preview = await fetchTemplatePromptPreview({
+          templateId: finalTemplateId,
+          token,
+          userParams,
+          customPromptStructure,
+        });
+        resolvedPromptStructure = preview.promptStructure;
+        resolvedEffectivePrompt = preview.effectivePrompt;
+      }
+
       const headers = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
@@ -2592,7 +2621,7 @@ export const useAppStore = create((set, get) => ({
         user_params: userParams,
         image_data: finalImageList[0] || null,
         image_datas: finalImageList.length > 0 ? finalImageList : null,
-        custom_prompt_structure: customPromptStructure,
+        custom_prompt_structure: resolvedPromptStructure,
         resolution: requestResolution,
         aspect_ratio: requestAspectRatio,
         num_images: 1,
@@ -2667,6 +2696,7 @@ export const useAppStore = create((set, get) => ({
           content: '已生成图片',
           imageUrl,
           templateName: finalTemplateId ? activeTemplateName : null,
+          prompt: resolvedEffectivePrompt,
         })]
       });
 

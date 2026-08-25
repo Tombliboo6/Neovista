@@ -1,0 +1,12 @@
+[Unit]
+Description=Run NeoVista Seedance reference cleanup daily
+
+[Timer]
+OnCalendar=*-*-* 03:35:00 Asia/Shanghai
+RandomizedDelaySec=15m
+Persistent=true
+AccuracySec=1m
+Unit=neovista-seedance-reference-cleanup.service
+
+[Install]
+WantedBy=timers.target

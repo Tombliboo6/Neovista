@@ -1,5 +1,6 @@
 import { Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { getVersionedGalleryAssetUrl } from '../../lib/galleryAssets.js';
 
 export default function ProjectGrid() {
   const navigate = useNavigate();
@@ -57,7 +58,7 @@ export default function ProjectGrid() {
           >
             <div className="h-3/4 overflow-hidden">
               <img
-                src={project.image}
+                src={getVersionedGalleryAssetUrl(project.image)}
                 alt={project.name}
                 className="w-full h-full object-cover"
               />

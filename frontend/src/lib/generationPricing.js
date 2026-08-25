@@ -8,7 +8,6 @@ export const BASE_RESOLUTION_PRICING = {
 
 const MODEL_SURCHARGE_PER_IMAGE = {
   'nano-banana-2': 0,
-  'nano-banana-pro': 30,
   'gpt-image-2': 0,
 };
 
@@ -41,5 +40,6 @@ export function calculateGenerationCost(
   numImages,
   selectedModel = DEFAULT_GENERATION_MODEL,
 ) {
-  return getResolutionPricing(selectedModel)[resolution] * numImages;
+  const safeNumImages = Math.min(1, Math.max(1, Number(numImages) || 1));
+  return getResolutionPricing(selectedModel)[resolution] * safeNumImages;
 }

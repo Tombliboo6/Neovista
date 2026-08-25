@@ -184,7 +184,7 @@ function CanvasSurface() {
 
     if (connection.targetHandle === 'prompt') return sourceNode.data?.outputType === 'text';
     if (connection.targetHandle === 'reference') {
-      return ['image', 'video'].includes(sourceNode.data?.outputType);
+      return sourceNode.data?.outputType === 'image';
     }
     return false;
   }, [nodes]);

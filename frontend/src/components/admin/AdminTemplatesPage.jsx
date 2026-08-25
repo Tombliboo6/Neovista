@@ -10,13 +10,17 @@ export default function AdminTemplatesPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
 
   const adminToken = localStorage.getItem('adminToken');
+  const userToken = localStorage.getItem('token');
 
   const loadTemplates = useCallback(async () => {
     try {
       const response = await fetch('/api/v1/admin/templates', {
-        headers: { 'x-admin-token': adminToken }
+        headers: {
+          'x-admin-token': adminToken,
+          'Authorization': `Bearer ${userToken || ''}`,
+        }
       });
-      if (response.status === 403) {
+      if ([401, 403].includes(response.status)) {
         localStorage.removeItem('adminToken');
         window.location.reload();
         return;
@@ -28,7 +32,7 @@ export default function AdminTemplatesPage() {
     } finally {
       setLoading(false);
     }
-  }, [adminToken]);
+  }, [adminToken, userToken]);
 
   useEffect(() => {
     if (!adminToken) {
@@ -261,7 +265,8 @@ export default function AdminTemplatesPage() {
                           method: 'PUT',
                           headers: {
                             'Content-Type': 'application/json',
-                            'x-admin-token': adminToken
+                            'x-admin-token': adminToken,
+                            'Authorization': `Bearer ${userToken || ''}`,
                           },
                           body: JSON.stringify(editingTemplate)
                         });

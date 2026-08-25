@@ -57,8 +57,8 @@ export default function RightPanel() {
                   镜头请求预览
                 </div>
                 {generationDraft ? (
-                  <span className={`text-[10px] ${generationDraft.ok ? 'text-emerald-300/75' : 'text-rose-300/75'}`}>
-                    {generationDraft.ok ? '校验通过' : '校验失败'}
+                  <span className={`text-[10px] ${generationDraft.ok && !generationDraft.stale ? 'text-emerald-300/75' : 'text-rose-300/75'}`}>
+                    {generationDraft.stale ? '请求已过期' : (generationDraft.ok ? '校验通过' : '校验失败')}
                   </span>
                 ) : null}
               </div>
@@ -70,15 +70,25 @@ export default function RightPanel() {
               ) : (
                 <div className="mt-2 space-y-2">
                   <div className="flex items-center gap-2 font-mono text-[10px] text-white/45">
-                    {generationDraft.ok ? <CheckCircle2 size={12} className="text-emerald-300/70" /> : <AlertTriangle size={12} className="text-rose-300/70" />}
-                    {generationDraft.id}
+                    {generationDraft.ok && !generationDraft.stale ? <CheckCircle2 size={12} className="text-emerald-300/70" /> : <AlertTriangle size={12} className="text-rose-300/70" />}
+                    {generationDraft.requestFingerprint || generationDraft.id}
                   </div>
                   <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
                     <div className="flex justify-between gap-2"><dt className="text-white/30">镜头</dt><dd className="truncate text-white/55">{generationDraft.shotTitle || generationDraft.shotIndex}</dd></div>
                     <div className="flex justify-between gap-2"><dt className="text-white/30">参考图</dt><dd className="text-white/55">{generationDraft.referenceCount || 0} 张</dd></div>
                     <div className="flex justify-between gap-2"><dt className="text-white/30">规则</dt><dd className="text-white/55">{generationDraft.continuityRules?.length || 0} 项</dd></div>
                     <div className="flex justify-between gap-2"><dt className="text-white/30">时长</dt><dd className="text-white/55">{generationDraft.duration}s</dd></div>
+                    {generationDraft.request ? (
+                      <>
+                        <div className="flex justify-between gap-2"><dt className="text-white/30">清晰度</dt><dd className="text-white/55">{generationDraft.request.resolution}</dd></div>
+                        <div className="flex justify-between gap-2"><dt className="text-white/30">输入模式</dt><dd className="text-white/55">{generationDraft.request.frameMode}</dd></div>
+                        <div className="flex justify-between gap-2"><dt className="text-white/30">预计积分</dt><dd className="text-white/55">{generationDraft.request.estimatedCredits}</dd></div>
+                      </>
+                    ) : null}
                   </dl>
+                  {(generationDraft.staleReasons || []).map((message) => (
+                    <p key={message} className="rounded-md bg-rose-400/10 px-2 py-1.5 text-[10px] leading-4 text-rose-200/80">{message}</p>
+                  ))}
                   {(generationDraft.errors || []).map((message) => (
                     <p key={message} className="rounded-md bg-rose-400/10 px-2 py-1.5 text-[10px] leading-4 text-rose-200/80">{message}</p>
                   ))}

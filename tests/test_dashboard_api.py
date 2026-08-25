@@ -21,6 +21,7 @@ os.environ.setdefault("ADMIN_SECRET_KEY", "test-admin-secret")
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH}"
 
 import database as database_module
+import auth as auth_module
 from models import AlertEvent, Base, FrontendErrorEvent, GenerationEvent, User
 
 os.chdir(BACKEND_DIR)
@@ -53,6 +54,18 @@ class DashboardApiTest(unittest.TestCase):
             )
             session.add(user)
             session.flush()
+            admin = User(
+                email="dashboard-admin@example.com",
+                hashed_password="hashed",
+                credits=0,
+                is_admin=True,
+                created_at=datetime.utcnow(),
+            )
+            session.add(admin)
+            session.flush()
+            self.admin_headers["authorization"] = (
+                "Bearer " + auth_module.create_access_token({"sub": admin.email, "user_id": admin.id})
+            )
 
             session.add(
                 GenerationEvent(
@@ -100,7 +113,21 @@ class DashboardApiTest(unittest.TestCase):
 
     def test_dashboard_overview_requires_admin_token(self):
         response = self.client.get("/api/v1/admin/dashboard/overview")
-        self.assertEqual(response.status_code, 403)
+        self.assertIn(response.status_code, (401, 403))
+
+    def test_dashboard_overview_requires_both_admin_factors(self):
+        jwt_only = {"authorization": self.admin_headers["authorization"]}
+        self.assertEqual(
+            self.client.get("/api/v1/admin/dashboard/overview", headers=jwt_only).status_code,
+            403,
+        )
+        self.assertEqual(
+            self.client.get(
+                "/api/v1/admin/dashboard/overview",
+                headers={"x-admin-token": "test-admin-secret"},
+            ).status_code,
+            401,
+        )
 
     def test_dashboard_overview_returns_expected_sections(self):
         response = self.client.get(
@@ -199,7 +226,7 @@ class DashboardApiTest(unittest.TestCase):
     def test_admin_channels_endpoint_requires_admin_token(self):
         response = self.client.get("/api/v1/admin/channels")
 
-        self.assertEqual(response.status_code, 403)
+        self.assertIn(response.status_code, (401, 403))
 
     def test_admin_channels_endpoint_exposes_non_secret_provider_metadata(self):
         channels = (

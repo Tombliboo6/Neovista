@@ -12,11 +12,13 @@ export const buildGeneratedImageMessage = ({
   imageUrl,
   templateName = null,
   content = '已生成图片',
+  prompt = '',
 }) => ({
   role: 'assistant',
   content,
   imageUrl,
   templateName,
+  prompt,
 });
 
 export const summarizeGeneratedImageUrl = (imageUrl) => ({

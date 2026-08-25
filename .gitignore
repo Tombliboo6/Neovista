@@ -36,6 +36,8 @@ __pycache__/
 backend/neovista.db
 backend/*.db
 *.db
+*.db-wal
+*.db-shm
 
 # 日志
 logs/
@@ -43,12 +45,18 @@ logs/
 
 # 临时文件
 temp_docx/
+.pytest_cache/
+
+# 本地项目治理状态
+.ai-pm/
 
 # 前端构建产物
 frontend/dist/
 frontend/build/
 backend/.env
 backend/*.db
+backend/static/seedance_references/
+backend/static/template_thumbnails/
 *.pem
 
 .worktrees/
