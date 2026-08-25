@@ -521,6 +521,10 @@ button {
 }
 
 .profile-facts > div {
+  display: flex;
+  min-height: 8.4cqw;
+  flex-direction: column;
+  justify-content: center;
   padding: 1.35cqw;
   border: 1px solid var(--line);
   background: rgba(255, 250, 240, 0.56);
@@ -529,24 +533,22 @@ button {
 .profile-facts b {
   display: block;
   color: var(--forest-800);
-  font-size: 1.32cqw;
+  font-size: 1.55cqw;
   line-height: 1.35;
 }
 
 .profile-facts p {
   margin-top: 0.8cqw;
   color: var(--muted);
-  font-size: 0.95cqw;
+  font-size: 0.92cqw;
   line-height: 1.55;
 }
 
-.profile-note {
-  padding: 0.95cqw 1.3cqw;
-  color: var(--forest-800);
-  border-left: 0.35cqw solid var(--gold-500);
-  background: rgba(216, 167, 53, 0.1);
-  font-family: Georgia, "Songti SC", serif;
-  font-size: 1.45cqw;
+.profile-facts a {
+  color: var(--forest-700);
+  font-weight: 700;
+  text-decoration-color: var(--gold-500);
+  text-underline-offset: 0.18em;
 }
 
 .media-grid,
@@ -3446,6 +3448,189 @@ button {
 
 .ai-video-summary b {
   font-size: 1.04cqw;
+}
+
+.ai-video-intro {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  align-content: start;
+  gap: 0.62cqw;
+}
+
+.ai-video-mode-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1cqw;
+  color: var(--muted);
+  font-size: 0.72cqw;
+}
+
+.ai-video-mode-heading b {
+  color: var(--forest-700);
+  font-size: 0.88cqw;
+}
+
+.ai-video-mode-grid {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: start;
+  gap: 0.72cqw;
+}
+
+.ai-video-mode-card {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto auto;
+  border: 1px solid rgba(21, 81, 54, 0.24);
+  border-top: 0.28cqw solid var(--gold-500);
+  background: rgba(255, 250, 240, 0.82);
+  box-shadow: 0 0.55cqw 1.35cqw rgba(13, 56, 37, 0.08);
+}
+
+.ai-video-mode-card video {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  display: block;
+  object-fit: cover;
+  background: var(--forest-950);
+}
+
+.ai-video-mode-copy {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0.58cqw 0.68cqw 0.62cqw;
+}
+
+.ai-video-mode-copy header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4cqw;
+}
+
+.ai-video-mode-copy header small {
+  color: var(--gold-600);
+  font-family: Georgia, serif;
+  font-size: 0.57cqw;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.ai-video-mode-copy header b {
+  color: var(--forest-800);
+  font-size: 1.04cqw;
+}
+
+.ai-video-mode-copy p {
+  margin-top: 0.3cqw;
+  color: var(--ink);
+  font-size: 0.72cqw;
+  line-height: 1.36;
+}
+
+.ai-video-mode-copy > span {
+  margin-top: 0.34cqw;
+  color: var(--muted);
+  font-size: 0.66cqw;
+  line-height: 1.38;
+}
+
+.ai-video-mode-copy > span i {
+  margin-right: 0.32cqw;
+  color: var(--forest-700);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.ai-video-mode-copy a {
+  width: fit-content;
+  margin-top: 0.42cqw;
+  padding-top: 0.42cqw;
+  color: var(--forest-700);
+  border-bottom: 1px solid rgba(21, 81, 54, 0.32);
+  font-size: 0.66cqw;
+  font-weight: 760;
+  text-decoration: none;
+}
+
+.ai-video-mode-copy a:hover,
+.ai-video-mode-copy a:focus-visible {
+  color: var(--gold-600);
+  border-color: currentColor;
+}
+
+.ai-video-basic-flow {
+  display: grid;
+  grid-template-columns: 8.2cqw minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0.55cqw;
+}
+
+.ai-video-basic-flow > b {
+  display: grid;
+  place-items: center;
+  padding: 0.5cqw 0.65cqw;
+  color: var(--gold-300);
+  background: var(--forest-800);
+  font-size: 0.82cqw;
+}
+
+.ai-video-basic-flow > div {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.32cqw;
+}
+
+.ai-video-basic-flow span {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: baseline;
+  justify-content: start;
+  gap: 0.35cqw;
+  padding: 0.48cqw 0.58cqw;
+  color: var(--forest-800);
+  border: 1px solid rgba(21, 81, 54, 0.18);
+  background: rgba(255, 250, 240, 0.72);
+}
+
+.ai-video-basic-flow span i {
+  color: var(--gold-600);
+  font-family: Georgia, serif;
+  font-size: 0.62cqw;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.ai-video-basic-flow span b {
+  font-size: 0.7cqw;
+}
+
+.ai-video-basic-flow span small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.58cqw;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-video-summary {
+  min-height: 2.35cqw;
+}
+
+.ai-video-summary i {
+  width: 1px;
+  height: 1.05cqw;
+  margin: 0 0.25cqw;
+  background: rgba(255, 250, 240, 0.32);
 }
 
 .history-map {

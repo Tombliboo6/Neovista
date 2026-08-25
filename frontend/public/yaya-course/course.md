@@ -40,13 +40,22 @@ AIGC 可以理解为用人工智能生成或修改内容。输入可以是文字
 
 ## AI视频
 
-![饭团、小小和馒头把一个心理问题变成有场景、有情绪、有行动的视频故事](assets/generated/ai-video-psychology-scene-v1.jpg)
+AI视频，就是用人工智能生成、修改或协助完成视频。
 
-视频把文字、画面、声音和动作组织在一起，也让心理知识进入具体的校园情境。
+生成类型按照输入给模型的素材区分。
 
-- 信息更完整。脚本、画面、对白和动作进入同一个作品
-- 心理内容更具体。焦虑、拖延和人际关系，可以放进宿舍、课堂与考试等校园情境
-- 传播更方便。一条成片可以用于短视频账号、校园活动和课堂分享
+| 生成类型 | 输入与结果 | 简单示例 |
+|---|---|---|
+| 文生视频 | 输入文字，直接生成动态镜头 | 输入一段爵士舞描述，生成约4秒双人舞。[官方完整示例](https://lf3-static.bytednsdoc.com/obj/eden-cn/lapzild-tss/ljhwZthlaukjlkulzlp/user-upload/4uec3mljdroek.mp4) |
+| 图生视频 | 输入图片，让静态人物和场景产生动作 | 输入晾衣服的女孩图片，让她取衣并抖开。[官方完整示例](https://lf3-static.bytednsdoc.com/obj/eden-cn/lapzild-tss/ljhwZthlaukjlkulzlp/user-upload/3bnsnmneog23u.mov) |
+| 视频生视频 | 输入已有视频，参考动作、运镜或内容继续生成 | 输入骑马片段，让AI延长并续拍后续动作。[官方完整示例](https://lf3-static.bytednsdoc.com/obj/eden-cn/lapzild-tss/ljhwZthlaukjlkulzlp/user-upload/4uec3mljdmuj3.mp4) |
+| 多模态生成 | 组合文字、图片、视频或声音，分别控制不同内容 | 同时输入脚本、人物、场景和道具参考图。[官方完整示例](https://lf3-static.bytednsdoc.com/obj/eden-cn/lapzild-tss/ljhwZthlaukjlkulzlp/user-upload/4uec3mljde9rv.mp4) |
+
+一条完整AI视频包含八个基本步骤。
+
+**选题 → 脚本 → 分镜 → 关键帧 → 视频生成 → 剪辑 → 发布 → 复盘**
+
+生成类型说明单个镜头怎么产生，基本步骤说明一条完整视频怎么完成。
 
 ## 前一步越清晰，后一步返工越少
 
@@ -114,10 +123,11 @@ AIGC 可以理解为用人工智能生成或修改内容。输入可以是文字
 
 | 经历 | 与这门课的关系 |
 |---|---|
-| 四川农业大学设计专业本硕 | 熟悉校园环境与学生创作过程 |
-| 美国生成式图片平台相关 RA 经历 | 参与过生成式图片产品搭建 |
-| NeoVista 生成平台创业 | 持续把模型接入真实创作流程 |
-| 一年考研辅导经历 | 关注学生能不能听懂并真正开始操作 |
+| 川农风景园林 |  |
+| LSU 流域水文实验室 |  |
+| 霄启数智 | 正在做 AI 视频、AI 工作流与 NeoVista 生成平台 |
+
+NeoVista 已开放使用：[neovista.cn](https://neovista.cn)
 
 # 鸭鸭视频背景介绍
 

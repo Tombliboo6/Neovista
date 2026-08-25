@@ -74,12 +74,11 @@ window.COURSE_SLIDES = [
       <div class="profile-grid">
         <div class="profile-mark profile-name"><span>周文龙</span></div>
         <div class="profile-facts">
-          <div><b>AIGC视频内容制作</b><p>从脚本、分镜到成片交付</p></div>
-          <div><b>鸭鸭特工队项目指导</b><p>角色、内容与制作流程建设</p></div>
-          <div><b>今天一起解决</b><p>模型怎么选，视频怎么做，项目怎么参与</p></div>
+          <div><b>川农风景园林</b></div>
+          <div><b>LSU 流域水文实验室</b></div>
+          <div><b>霄启数智</b><p>正在做 AI 视频、AI 工作流与 NeoVista 生成平台<br><a href="https://neovista.cn" target="_blank" rel="noopener">neovista.cn ↗</a></p></div>
         </div>
-      </div>
-      <p class="profile-note">先认识彼此，经历和项目细节在课堂展开。</p>`
+      </div>`
   },
   {
     section: '课程内容介绍',
@@ -101,20 +100,72 @@ window.COURSE_SLIDES = [
     section: '课程内容介绍',
     title: 'AI视频',
     layout: 'ai-video',
-    lead: '视频把文字、画面、声音和动作组织在一起，也让心理知识进入具体的校园情境。',
+    lead: 'AI视频，就是用人工智能生成、修改或协助完成视频。',
     html: `
-      <div class="ai-video-layout">
-        <figure class="ai-video-scene">
-          <img src="assets/generated/ai-video-psychology-scene-v1.jpg" alt="饭团、小小和馒头把一个心理问题变成有场景、有情绪、有行动的视频故事">
-          <figcaption><b>一个心理主题</b><span>从概念进入人物、场景和行动</span></figcaption>
-        </figure>
-        <div class="ai-video-reasons">
-          <article><strong>01</strong><div><b>信息更完整</b><p>脚本、画面、对白和动作进入同一个作品。</p></div></article>
-          <article><strong>02</strong><div><b>心理内容更具体</b><p>焦虑、拖延和人际关系，可以放进宿舍、课堂与考试等校园情境。</p></div></article>
-          <article><strong>03</strong><div><b>传播更方便</b><p>一条成片可以用于短视频账号、校园活动和课堂分享。</p></div></article>
+      <div class="ai-video-intro">
+        <div class="ai-video-mode-heading"><b>按照输入素材区分</b><span>点击播放几秒示例，卡片下方可打开官方完整视频</span></div>
+        <div class="ai-video-mode-grid">
+          <article class="ai-video-mode-card">
+            <video muted loop playsinline controls preload="metadata" aria-label="文生视频短示例">
+              <source src="assets/examples/ai-video-t2v-seedance-demo.mp4" type="video/mp4">
+            </video>
+            <div class="ai-video-mode-copy">
+              <header><small>TEXT → VIDEO</small><b>文生视频</b></header>
+              <p>只输入文字，模型直接生成动态镜头。</p>
+              <span><i>例子</i>输入一段爵士舞描述，生成约4秒双人舞。</span>
+              <a href="https://lf3-static.bytednsdoc.com/obj/eden-cn/lapzild-tss/ljhwZthlaukjlkulzlp/user-upload/4uec3mljdroek.mp4" target="_blank" rel="noopener noreferrer">官方完整示例 ↗</a>
+            </div>
+          </article>
+          <article class="ai-video-mode-card">
+            <video muted loop playsinline controls preload="metadata" aria-label="图生视频短示例">
+              <source src="assets/examples/ai-video-i2v-seedance-demo.mp4" type="video/mp4">
+            </video>
+            <div class="ai-video-mode-copy">
+              <header><small>IMAGE → VIDEO</small><b>图生视频</b></header>
+              <p>输入一张图片，让静态人物和场景产生动作。</p>
+              <span><i>例子</i>输入晾衣服的女孩图片，让她取衣并抖开。</span>
+              <a href="https://lf3-static.bytednsdoc.com/obj/eden-cn/lapzild-tss/ljhwZthlaukjlkulzlp/user-upload/3bnsnmneog23u.mov" target="_blank" rel="noopener noreferrer">官方完整示例 ↗</a>
+            </div>
+          </article>
+          <article class="ai-video-mode-card">
+            <video muted loop playsinline controls preload="metadata" aria-label="视频生视频短示例">
+              <source src="assets/examples/ai-video-v2v-seedance-demo.mp4" type="video/mp4">
+            </video>
+            <div class="ai-video-mode-copy">
+              <header><small>VIDEO → VIDEO</small><b>视频生视频</b></header>
+              <p>输入已有视频，参考动作、运镜或内容继续生成。</p>
+              <span><i>例子</i>输入骑马片段，让AI延长并续拍后续动作。</span>
+              <a href="https://lf3-static.bytednsdoc.com/obj/eden-cn/lapzild-tss/ljhwZthlaukjlkulzlp/user-upload/4uec3mljdmuj3.mp4" target="_blank" rel="noopener noreferrer">官方完整示例 ↗</a>
+            </div>
+          </article>
+          <article class="ai-video-mode-card">
+            <video muted loop playsinline controls preload="metadata" aria-label="多模态参考生成短示例">
+              <source src="assets/examples/ai-video-multimodal-seedance-demo.mp4" type="video/mp4">
+            </video>
+            <div class="ai-video-mode-copy">
+              <header><small>MULTIMODAL</small><b>多模态生成</b></header>
+              <p>组合文字、图片、视频或声音，分别控制不同内容。</p>
+              <span><i>例子</i>同时输入脚本、人物、场景和道具参考图。</span>
+              <a href="https://lf3-static.bytednsdoc.com/obj/eden-cn/lapzild-tss/ljhwZthlaukjlkulzlp/user-upload/4uec3mljde9rv.mp4" target="_blank" rel="noopener noreferrer">官方完整示例 ↗</a>
+            </div>
+          </article>
+        </div>
+        <div class="ai-video-basic-flow">
+          <b>一条完整AI视频</b>
+          <div>
+            <span><i>01</i><b>选题</b><small>确定讲什么</small></span>
+            <span><i>02</i><b>脚本</b><small>写清事件顺序</small></span>
+            <span><i>03</i><b>分镜</b><small>拆成单个镜头</small></span>
+            <span><i>04</i><b>关键帧</b><small>定角色、场景和构图</small></span>
+            <span><i>05</i><b>视频生成</b><small>让每个镜头动起来</small></span>
+            <span><i>06</i><b>剪辑</b><small>选择并连接镜头</small></span>
+            <span><i>07</i><b>发布</b><small>准备成片、封面和文案</small></span>
+            <span><i>08</i><b>复盘</b><small>根据反馈修改下一条</small></span>
+          </div>
         </div>
       </div>
-      <p class="ai-video-summary"><b>AIGC生成不同内容</b><span>视频把这些内容组织成一个完整故事</span></p>`
+      <p class="ai-video-summary"><b>生成类型</b><span>说明单个镜头怎么产生</span><i></i><b>基本步骤</b><span>说明一条完整视频怎么完成</span></p>`,
+    sources: [SOURCE.seedance]
   },
   {
     section: '课程内容介绍',

@@ -147,6 +147,13 @@ function buildDeck() {
   deck.querySelectorAll('img').forEach((image) => {
     image.addEventListener('error', () => image.closest('figure, .case-visual')?.classList.add('image-missing'));
   });
+  deck.querySelectorAll('video').forEach((video) => {
+    video.addEventListener('play', () => {
+      video.closest('.slide')?.querySelectorAll('video').forEach((otherVideo) => {
+        if (otherVideo !== video) otherVideo.pause();
+      });
+    });
+  });
   deck.querySelectorAll('.source-button').forEach((button) => {
     button.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -211,6 +218,7 @@ function setSlide(nextIndex, immediate = false) {
   loadSlideMedia(target + 1);
   const current = slides[index];
   if (current && target !== index) {
+    current.querySelectorAll('video').forEach((video) => video.pause());
     current.classList.remove('active');
     if (!immediate) {
       current.classList.add('leaving');
@@ -276,6 +284,7 @@ function bindControls() {
       if (event.key === 'Escape') closeSources();
       return;
     }
+    if (event.target instanceof Element && event.target.closest('a, button, video, input, textarea, select')) return;
     if (['ArrowRight', 'PageDown', ' '].includes(event.key)) {
       event.preventDefault();
       setSlide(index + 1);
