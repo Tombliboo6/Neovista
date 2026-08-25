@@ -1,6 +1,7 @@
 const SOURCE = {
-  dartmouth: { label: 'Dartmouth AI 史', url: 'https://ai.dartmouth.edu/our-story' },
+  dartmouth: { label: 'Dartmouth · AI 诞生', url: 'https://home.dartmouth.edu/about/artificial-intelligence-ai-coined-dartmouth' },
   alexnet: { label: 'AlexNet 论文', url: 'https://papers.nips.cc/paper_files/paper/2012/hash/c399862d3b9d6b76c8436e924a68c45b-Abstract.html' },
+  alexnetTeam: { label: '多伦多大学 · AlexNet 团队', url: 'https://www.utoronto.ca/index.php/news/neural-net-behind-geoffrey-hinton-s-nobel-prize-be-preserved-computer-history-museum' },
   gan: { label: 'GAN 论文', url: 'https://papers.nips.cc/paper_files/paper/2014/hash/f033ed80deb0234979a61f95710dbe25-Abstract.html' },
   transformer: { label: 'Transformer 论文', url: 'https://arxiv.org/abs/1706.03762' },
   diffusion: { label: '扩散模型论文', url: 'https://arxiv.org/abs/2006.11239' },
@@ -21,6 +22,13 @@ const SOURCE = {
   glmImage: { label: '智谱 · GLM-Image', url: 'https://docs.bigmodel.cn/cn/guide/models/image-generation/glm-image' },
   seedream: { label: '字节 Seed · Seedream 5.0 Lite', url: 'https://seed.bytedance.com/en/blog/deeper-thinking-more-accurate-generation-introducing-seedream-5-0-lite' },
   seedance: { label: '字节 Seed · Seedance 2.0', url: 'https://seed.bytedance.com/blog/seedance-2-0-official-launch' },
+  chinaAiPlan: { label: '中国政府网 · 新一代人工智能发展规划', url: 'https://www.gov.cn/zhengce/content/2017-07/20/content_5211996.htm' },
+  baiduWenxin: { label: '百度 · 文心助手', url: 'https://wenxin.baidu.com/' },
+  qwenProduct: { label: '阿里云 · 通义千问', url: 'https://qwen.ai/' },
+  sparkProduct: { label: '科大讯飞 · 讯飞星火', url: 'https://xinghuo.xfyun.cn/' },
+  chatglmProduct: { label: '智谱AI · 智谱清言', url: 'https://chatglm.cn/' },
+  kimiProduct: { label: '月之暗面 · Kimi', url: 'https://www.kimi.com/' },
+  deepseekR1: { label: 'DeepSeek · R1', url: 'https://www.deepseek.com/news/deepseek-r1/' },
   kling: { label: '可灵 · Video 3.0', url: 'https://app.klingai.com/cn/quickstart/klingai-video-3-model-user-guide' },
   minimax: { label: 'MiniMax · H3', url: 'https://www.minimax.io/blog/minimax-h3' },
   runway: { label: 'Runway · Gen-4', url: 'https://runwayml.com/research/introducing-runway-gen-4' },
@@ -103,7 +111,7 @@ window.COURSE_SLIDES = [
     lead: 'AI视频，就是用人工智能生成、修改或协助完成视频。',
     html: `
       <div class="ai-video-intro">
-        <div class="ai-video-mode-heading"><b>按照输入素材区分</b><span>点击播放几秒示例，卡片下方可打开官方完整视频</span></div>
+        <div class="ai-video-mode-heading"><b>按照输入素材区分</b><span>先看四种类型，下两页再看输入、完整提示词和结果</span></div>
         <div class="ai-video-mode-grid">
           <article class="ai-video-mode-card">
             <video muted loop playsinline controls preload="metadata" aria-label="文生视频短示例">
@@ -169,6 +177,79 @@ window.COURSE_SLIDES = [
   },
   {
     section: '课程内容介绍',
+    title: '文生视频 / 图生视频',
+    layout: 'ai-video-cases',
+    lead: '同一个案例同时看输入素材、完整提示词和生成结果。',
+    html: `
+      <div class="ai-video-case-grid">
+        <article class="ai-video-case">
+          <header><span>01</span><div><b>文生视频</b><small>文字 → 视频</small></div></header>
+          <div class="ai-video-case-media">
+            <div class="ai-video-text-input"><i>T</i><b>输入只有文字</b><span>人物、动作、镜头、质感与声音都由提示词规定</span></div>
+            <em>→</em>
+            <figure><video muted loop playsinline controls preload="metadata" aria-label="文生视频生成结果"><source src="assets/examples/ai-video-t2v-seedance-demo.mp4" type="video/mp4"></video><figcaption>生成结果</figcaption></figure>
+          </div>
+          <div class="ai-video-case-prompt"><small>课堂复现用完整提示词</small><p>20世纪20年代的爵士俱乐部里，一名穿金色流苏裙的女舞者和一名穿条纹西装的男舞者表演高速查尔斯顿舞。两人完成快速切分步、空中抛接和大幅摆臂。镜头动态跟随，穿插脚步特写。金色流苏随踢腿剧烈摆动，皮肤带有汗水光泽，画面保留烟雾和复古胶片颗粒。背景出现爵士乐队与欢呼人群，形成热烈的派对气氛。</p><div class="ai-video-prompt-parts"><b>提示词包含</b><span>时代与场景</span><span>人物</span><span>动作</span><span>镜头</span><span>质感</span><span>声音</span></div></div>
+          <p class="ai-video-case-note"><b>看点</b>没有图片兜底，画面中的每一项都要靠文字说清楚。</p>
+        </article>
+        <article class="ai-video-case">
+          <header><span>02</span><div><b>图生视频</b><small>图片 + 文字 → 视频</small></div></header>
+          <div class="ai-video-case-media">
+            <figure><img src="assets/examples/ai-video-i2v-input.jpg" alt="官方图生视频案例中晾衣女孩的输入画面"><figcaption>输入图｜官方成片首帧</figcaption></figure>
+            <em>→</em>
+            <figure><video muted loop playsinline controls preload="metadata" aria-label="图生视频生成结果"><source src="assets/examples/ai-video-i2v-seedance-demo.mp4" type="video/mp4"></video><figcaption>生成结果</figcaption></figure>
+          </div>
+          <div class="ai-video-case-prompt"><small>课堂复现用完整提示词</small><p>画面中的女孩优雅地晾好手中的衣服。她随后俯身从桶里拿出另一件衣服，双手展开并用力抖开，动作自然连贯。保持原图中的人物、红色长裙、阳台环境和夕阳光线一致。</p><div class="ai-video-prompt-parts"><b>提示词包含</b><span>主体保持</span><span>新增动作</span><span>环境保持</span><span>光线保持</span></div></div>
+          <p class="ai-video-case-note"><b>看点</b>图片先固定人物与环境，提示词主要说明接下来怎样动。</p>
+        </article>
+      </div>
+      <p class="ai-video-case-foot">官方发布页没有提供独立输入图下载，课件用官方成片首帧对应输入画面。完整原始提示词可从本页资料来源打开。</p>`,
+    sources: [SOURCE.seedance]
+  },
+  {
+    section: '课程内容介绍',
+    title: '视频生视频 / 多模态生成',
+    layout: 'ai-video-cases',
+    lead: '输入不再只是起点画面，还可以把动作、运镜、分镜和风格一起交给模型。',
+    html: `
+      <div class="ai-video-case-grid">
+        <article class="ai-video-case">
+          <header><span>03</span><div><b>视频生视频</b><small>视频 + 文字 → 视频</small></div></header>
+          <div class="ai-video-case-media">
+            <figure><video muted loop playsinline controls preload="metadata" aria-label="视频延长案例的输入视频"><source src="assets/examples/ai-video-v2v-input.mp4" type="video/mp4"></video><figcaption>输入视频｜骑马片段</figcaption></figure>
+            <em>→</em>
+            <figure><video muted loop playsinline controls preload="metadata" aria-label="视频延长案例的生成结果"><source src="assets/examples/ai-video-v2v-seedance-demo.mp4" type="video/mp4"></video><figcaption>延长结果</figcaption></figure>
+          </div>
+          <div class="ai-video-case-prompt"><small>课堂复现用完整提示词</small><p>延长参考视频。镜头继续跟拍骑棕马的橙衣男子，他加速奔向前方盛开橙色花朵的大树，折下两朵花。其他骑手依次进入画面。镜头推近，拍摄男子翻身下马，再快速环绕他一周。他走向骑白马的白衣女子，把花送给她。延续中国古典仕女画、三维动画与皮影结合的质感，主色为黑、白、橙，配乐使用轻快民乐。</p><div class="ai-video-prompt-parts"><b>提示词包含</b><span>续拍目标</span><span>剧情动作</span><span>运镜</span><span>风格</span><span>配色</span><span>音乐</span></div></div>
+          <p class="ai-video-case-note"><b>看点</b>输入视频给出人物、动作方向和镜头节奏，提示词规定后续剧情。</p>
+        </article>
+        <article class="ai-video-case">
+          <header><span>04</span><div><b>多模态生成</b><small>分镜 + 人物 + 场景 + 道具 → 视频</small></div></header>
+          <div class="ai-video-case-media">
+            <figure><img src="assets/examples/ai-video-multimodal-input.jpg" alt="官方多模态案例中的分镜表、人物、场景和道具四项输入素材"><figcaption>输入素材｜4项参考</figcaption></figure>
+            <em>→</em>
+            <figure><video muted loop playsinline controls preload="metadata" aria-label="多模态参考生成结果"><source src="assets/examples/ai-video-multimodal-seedance-demo.mp4" type="video/mp4"></video><figcaption>生成结果</figcaption></figure>
+          </div>
+          <div class="ai-video-case-prompt"><small>课堂复现用完整提示词</small><p>按照参考图1的分镜脚本制作15秒治愈短片，沿用其中的镜头顺序、景别、运镜、画面内容和文案。主人公严格参考图2，场景严格参考图3，道具严格参考图4。保持角色外观、服装、环境光线与道具形态一致，镜头自然衔接，整体节奏舒缓。</p><div class="ai-video-prompt-parts"><b>提示词包含</b><span>图1 分镜</span><span>图2 人物</span><span>图3 场景</span><span>图4 道具</span></div></div>
+          <p class="ai-video-case-note"><b>看点</b>每份素材负责一件事，下一页展开图1里的六个完整镜头。</p>
+        </article>
+      </div>
+      <p class="ai-video-case-foot">视频生视频案例使用官方演示前段作为输入、后段作为延长结果。多模态案例的六镜分镜在下一页展开。</p>`,
+    sources: [SOURCE.seedance]
+  },
+  {
+    section: '课程内容介绍',
+    nav: '多模态生成｜官方分镜表',
+    title: '多模态生成｜官方分镜表',
+    layout: 'storyboard-prompt',
+    html: `
+      <figure class="storyboard-prompt-board">
+        <img src="assets/examples/ai-video-multimodal-storyboard-official.png" alt="Seedance 2.0 官方演示视频开头展示的六镜分镜提示词表">
+      </figure>`,
+    sources: [SOURCE.seedance]
+  },
+  {
+    section: '课程内容介绍',
     title: '前一步越清晰，后一步返工越少',
     layout: 'statement',
     theme: 'dark',
@@ -183,22 +264,95 @@ window.COURSE_SLIDES = [
   {
     section: 'AI发展背景介绍',
     title: 'AI发展背景介绍',
-    layout: 'history-map',
-    lead: 'AI创作来自70年的技术积累，能力从“识别世界”走到“协作完成项目”。',
+    layout: 'history-synced',
+    lead: '先看全球主线，再把中国的重要节点放回同一条时间线上。',
     html: `
-      <div class="history-map">
-        <div class="history-track">
-          <article class="above"><time>1956</time><b>人工智能成为研究领域</b><p>达特茅斯研讨会把“机器智能”聚成明确方向。</p></article>
-          <article class="below"><time>2012</time><b>机器学会看图</b><p>AlexNet推动深度学习进入大规模视觉识别。</p></article>
-          <article class="above"><time>2014</time><b>模型开始生成画面</b><p>GAN让模型从判断“是什么”走向创造“没见过的新图”。</p></article>
-          <article class="below"><time>2017</time><b>Transformer出现</b><p>注意力机制后来成为语言与多模态模型的重要基础。</p></article>
-          <article class="above"><time>2020</time><b>扩散生成更稳定</b><p>扩散模型逐步提高图像质量，也影响后来的图像与视频生成。</p></article>
-          <article class="below"><time>2022</time><b>自然语言成为入口</b><p>ChatGPT与生成图像工具让普通人直接用语言创作。</p></article>
-          <article class="above"><time>2024—2026</time><b>进入多模态工作流</b><p>文字、图片、声音和视频开始被同一项目连续调用与修改。</p></article>
+      <div class="history-synced-map">
+        <div class="history-lane-head"><b>全球主线</b><span>研究能力怎样一步步变成今天的创作工具</span></div>
+        <div class="history-global-grid">
+          <article><time>1956</time><b>AI成为研究领域</b><p>达特茅斯会议为人工智能命名并提出研究问题。</p><small>研究问题｜机器能否模拟学习</small></article>
+          <article><time>2012</time><b>深度学习看懂图像</b><p>AlexNet推动视觉识别进入深度学习阶段。</p><small>能力入口｜识别图像中的内容</small></article>
+          <article><time>2017</time><b>Transformer出现</b><p>注意力机制成为语言与多模态模型的重要基础。</p><small>核心结构｜理解上下文关系</small></article>
+          <article><time>2022</time><b>生成式AI走向公众</b><p>普通人开始直接用自然语言生成和修改内容。</p><small>交互入口｜自然语言指令</small></article>
+          <article><time>2024</time><b>文字开始生成视频</b><p>更长镜头、复杂运动与场景一致性成为竞争重点。</p><small>内容输出｜连续动态画面</small></article>
+          <article><time>2025—2026</time><b>模型进入工作流</b><p>文字、图片、声音、视频与工具被连续调用。</p><small>协作方式｜多模态＋工具调用</small></article>
         </div>
-        <div class="history-shift"><span>识别世界</span><i>→</i><span>生成内容</span><i>→</i><span>理解参考</span><i>→</i><span>协作完成项目</span></div>
+        <div class="history-axis"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="history-lane-head china"><b>中国节点</b><span>在同一进程中发生的政策、模型与产品突破</span></div>
+        <div class="history-china-grid">
+          <article><time>2017</time><b>《新一代人工智能发展规划》</b><p>国家层面明确人工智能的阶段目标与重点任务。</p><small>政策布局</small></article>
+          <article><time>2023</time><b>国产大模型进入公众使用</b><p>文心、通义、星火、智谱清言和Kimi陆续面向普通用户。</p><small>产品转折｜从模型发布到大众使用</small></article>
+          <article><time>2025</time><b>DeepSeek-R1</b><p>推理模型以开放权重和技术报告进入全球开发者视野。</p><small>复杂推理</small></article>
+          <article><time>2026</time><b>Seedance 2.0</b><p>文字、图片、音频和视频共同进入视频生成与编辑。</p><small>AI视频</small></article>
+        </div>
+        <div class="history-evolution">
+          <article><b>识别世界</b><span>分类、检测、预测</span></article><i>→</i>
+          <article><b>生成内容</b><span>文字、图片、声音、视频</span></article><i>→</i>
+          <article><b>理解多种参考</b><span>角色、场景、动作与风格</span></article><i>→</i>
+          <article><b>连续完成任务</b><span>从一个指令走向完整工作流</span></article>
+        </div>
       </div>`,
-    sources: [SOURCE.dartmouth, SOURCE.alexnet, SOURCE.gan, SOURCE.transformer, SOURCE.diffusion, SOURCE.stableDiffusion, SOURCE.chatgpt, SOURCE.soraHistory, SOURCE.seedance]
+    sources: [SOURCE.dartmouth, SOURCE.alexnet, SOURCE.transformer, SOURCE.chatgpt, SOURCE.soraHistory, SOURCE.chinaAiPlan, SOURCE.baiduWenxin, SOURCE.qwenProduct, SOURCE.sparkProduct, SOURCE.chatglmProduct, SOURCE.kimiProduct, SOURCE.deepseekR1, SOURCE.seedance]
+  },
+  {
+    section: 'AI发展背景介绍',
+    title: '全球AI发展的关键节点',
+    layout: 'history-proof',
+    lead: '每一次变化，都留下了可以被看见的论文、人物或产品。',
+    html: `
+      <div class="history-proof-grid">
+        <article class="history-proof-card">
+          <figure><img src="assets/history/dartmouth-ai-proposal.webp" alt="1955年达特茅斯人工智能研究计划书标题"><figcaption>Dartmouth College</figcaption></figure>
+          <div><time>1956</time><b>人工智能成为研究领域</b><p>研究者开始系统讨论：机器能不能模拟学习与智能。</p><small>关键变化｜研究方向被正式命名</small></div>
+        </article>
+        <article class="history-proof-card">
+          <figure><img src="assets/history/alexnet-team-2012.jpg" alt="AlexNet团队成员与Geoffrey Hinton合影"><figcaption>University of Toronto</figcaption></figure>
+          <div><time>2012</time><b>AlexNet推动视觉突破</b><p>深度神经网络在大规模图像识别中展现出明显优势。</p><small>关键变化｜机器视觉进入深度学习阶段</small></div>
+        </article>
+        <article class="history-proof-card">
+          <figure><img src="assets/history/transformer-architecture-2017.png" alt="Attention Is All You Need论文中的Transformer结构图"><figcaption>Attention Is All You Need</figcaption></figure>
+          <div><time>2017</time><b>Transformer出现</b><p>注意力机制让模型更有效地理解长距离关系，并成为后来大模型的重要基础。</p><small>关键变化｜同一架构走向语言与多模态</small></div>
+        </article>
+        <article class="history-proof-card">
+          <figure><img src="assets/history/chatgpt-launch-2022.png" alt="OpenAI在2022年发布ChatGPT的官方页面"><figcaption>OpenAI</figcaption></figure>
+          <div><time>2022</time><b>自然语言成为大众入口</b><p>生成式AI从研究和专业工具走向普通人的日常使用。</p><small>关键变化｜不会编程，也能直接与模型协作</small></div>
+        </article>
+      </div>`,
+    sources: [SOURCE.dartmouth, SOURCE.alexnetTeam, SOURCE.alexnet, SOURCE.transformer, SOURCE.chatgpt]
+  },
+  {
+    section: 'AI发展背景介绍',
+    title: '中国AI发展的关键节点',
+    layout: 'history-proof',
+    lead: '这四个节点分别对应政策布局、公众产品、推理模型和AI视频。',
+    html: `
+      <div class="history-proof-grid">
+        <article class="history-proof-card">
+          <figure><img src="assets/history/china-ai-plan-2017.png" alt="国务院新一代人工智能发展规划官方页面"><figcaption>中国政府网</figcaption></figure>
+          <div><time>2017</time><b>国家发展规划发布</b><p>人工智能的基础研究、产业应用、人才与治理被放进长期发展路线。</p><small>对应阶段｜政策布局</small></div>
+        </article>
+        <article class="history-proof-card">
+          <figure class="history-product-board">
+            <div class="history-product-board-head"><b>产品</b><span>企业</span></div>
+            <div><b>文心一言</b><span>百度</span></div>
+            <div><b>通义千问</b><span>阿里云</span></div>
+            <div><b>讯飞星火</b><span>科大讯飞</span></div>
+            <div><b>智谱清言</b><span>智谱AI</span></div>
+            <div><b>Kimi</b><span>月之暗面</span></div>
+            <figcaption>2023年｜国产大模型产品</figcaption>
+          </figure>
+          <div><time>2023</time><b>国产大模型进入公众使用</b><p>学生和普通用户开始直接使用国产对话模型，竞争从参数规模走向产品体验与真实应用。</p><small>对应阶段｜产品与用户</small></div>
+        </article>
+        <article class="history-proof-card">
+          <figure><img src="assets/history/deepseek-r1-benchmark.png" alt="DeepSeek-R1官方发布页中的能力评测图"><figcaption>DeepSeek</figcaption></figure>
+          <div><time>2025</time><b>DeepSeek-R1 发布</b><p>推理模型能力、开放权重与技术报告同时面向开发者公开。</p><small>对应阶段｜复杂推理</small></div>
+        </article>
+        <article class="history-proof-card">
+          <figure><img src="assets/history/seedance-2-launch-2026.png" alt="字节跳动Seedance 2.0官方发布页面"><figcaption>ByteDance Seed</figcaption></figure>
+          <div><time>2026</time><b>Seedance 2.0 发布</b><p>文字、图片、音频和视频可以共同控制生成内容，AI视频进入多模态创作阶段。</p><small>对应阶段｜视频生成与编辑</small></div>
+        </article>
+      </div>`,
+    sources: [SOURCE.chinaAiPlan, SOURCE.baiduWenxin, SOURCE.qwenProduct, SOURCE.sparkProduct, SOURCE.chatglmProduct, SOURCE.kimiProduct, SOURCE.deepseekR1, SOURCE.seedance]
   },
   {
     section: 'AI发展背景介绍',
@@ -260,7 +414,7 @@ window.COURSE_SLIDES = [
           <small>下一阶段</small>
           <h3>鸭鸭IP继续向五个方向生长</h3>
           <div class="next-direction-grid">
-            <span>年度选题库</span><span>线下活动物料</span><span>校园特色动植物联动</span><span>鸭鸭AI对话模型</span><span>更完整的私域工作台</span>
+            <a href="assets/project/topic-bank-31-plan.png" target="_blank" rel="noreferrer" aria-label="查看真实方案中的阶段选题库截图">年度选题库<small>查看方案截图 ↗</small></a><span>线下活动物料</span><span>校园特色动植物联动</span><span>鸭鸭AI对话模型</span><span>更完整的私域工作台</span>
           </div>
           <p>视频会继续连接知识内容、校园活动、学生共创与长期服务。</p>
         </div>
@@ -379,16 +533,28 @@ window.COURSE_SLIDES = [
   {
     section: '你们能够获得什么',
     title: '自媒体账号',
-    layout: 'process',
-    lead: '账号的长期价值来自稳定主题、固定表达、持续更新和数据复盘。',
+    layout: 'creator-proof',
+    lead: 'AI降低视频制作门槛，但账号增长仍然取决于选题、热点判断和持续更新。',
     html: `
-      <div class="account-loop">
-        <article><b>固定主题</b><p>愿意长期讲什么</p></article>
-        <article><b>固定表达</b><p>角色、语气与栏目</p></article>
-        <article><b>持续更新</b><p>AI协助调研与生产</p></article>
-        <article><b>数据复盘</b><p>留下有效的栏目做法</p></article>
+      <div class="creator-proof-layout">
+        <div class="creator-proof-grid">
+          <figure class="creator-profile-shot">
+            <img src="assets/cases/prism-account-20260724.png" alt="Prism造物所小红书账号在2026年7月24日的主页截图">
+            <figcaption><b>Prism造物所</b><span>团队自营账号｜数据快照 2026.07.24</span></figcaption>
+          </figure>
+          <div class="creator-proof-copy">
+            <small>2026.07.01—07.24｜24天</small>
+            <div class="creator-kpis">
+              <article><strong>0 → 4475</strong><span>粉丝增长</span></article>
+              <article><strong>2.5万</strong><span>获赞与收藏</span></article>
+            </div>
+            <div class="creator-observation"><b>视频内容并不复杂</b><p>真正花心思的，是怎样捕捉热点、判断选题，再把它变成观众愿意停下来的表达。</p></div>
+            <p class="creator-thesis">会用AI做视频，不只是多一项工具技能，也是在降低你做自媒体、建立个人IP的启动成本。</p>
+          </div>
+        </div>
+        <div class="creator-method-strip"><b>账号增长的真实路径</b><span>热点观察</span><i>→</i><span>选题判断</span><i>→</i><span>简单生产</span><i>→</i><span>持续测试</span><i>→</i><span>数据复盘</span></div>
       </div>
-      <p class="center-note">偶然爆一条是结果，稳定做出一类内容才是能力。</p>`
+      <p class="creator-callout">每个人都可以开始经营自己的内容资产；AI让第一步更容易，但你的判断决定账号能走多远。</p>`
   },
   {
     section: '你们能够获得什么',
@@ -406,14 +572,14 @@ window.COURSE_SLIDES = [
     section: '你们能够获得什么',
     title: '分组',
     layout: 'visual',
-    lead: '根据课前问卷信息先整理为三组。本页只公布名单，具体方向与分工在课堂说明，并可随项目调整。',
+    lead: '根据现有10份学生问卷先整理为三组；其余2名学生补充信息后，分别加入B组和C组。具体方向与分工不固定。',
     html: `
       <div class="visual-split roster-visual-split">
         <figure class="visual-panel media-contain"><img src="assets/generated/duck-team-roles-portrait-v2.jpg" alt="三只鸭鸭与学生团队共同讨论项目"></figure>
         <div class="roster-grid compact-roster">
           <article><header><b>A组</b><span>4人</span></header><p>杨蕊羽</p><p>卢秋江</p><p>汪蕊</p><p>桑学涵</p></article>
-          <article><header><b>B组</b><span>4人</span></header><p>李国豪</p><p>杨瑞盈</p><p>买尔哈巴·买买提</p><p>艾尼尔</p></article>
-          <article><header><b>C组</b><span>3人</span></header><p>袁纤惠</p><p>蒋欣益</p><p>达珂遥</p><p class="roster-open">组内分工课堂确认</p></article>
+          <article><header><b>B组</b><span>3人＋待补充</span></header><p>李国豪</p><p>杨瑞盈</p><p>买尔哈巴·买买提</p><p class="roster-open">第4名学生待补充</p></article>
+          <article><header><b>C组</b><span>3人＋待补充</span></header><p>袁纤惠</p><p>蒋欣益</p><p>达珂遥</p><p class="roster-open">第4名学生待补充</p></article>
         </div>
       </div>`
   },
