@@ -1,0 +1,80 @@
+:root {
+  --paper: #f7f1e5;
+  --paper-2: #eee4d2;
+  --navy: #0d3825;
+  --navy-2: #155136;
+  --blue: #226748;
+  --yellow: #d8a735;
+  --yellow-2: #bd8b24;
+  --red: #a84f3d;
+  --muted: #647067;
+  --white: #fffaf0;
+  --line: rgba(25,56,38,.17);
+}
+
+html, body {
+  color: #18221b;
+  background: var(--paper);
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+}
+
+body::before {
+  opacity: 1;
+  background-image: linear-gradient(rgba(21,81,54,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(21,81,54,.025) 1px,transparent 1px);
+  background-size: 83px 83px;
+}
+
+.scene:not(#p01):not(#p05) { background: radial-gradient(circle at 88% 11%,rgba(216,167,53,.11),transparent 21%),var(--paper); }
+.page { padding: 70px 82px 62px; }
+.page::before { content: "SESSION 02"; position: absolute; right: 82px; top: 54px; color: var(--navy-2); font-size: 16px; font-weight: 900; letter-spacing: .16em; }
+.page::after { content: "鸭鸭特工队 · 学生共创指导课"; position: absolute; left: 82px; bottom: 44px; color: rgba(24,34,27,.58); font-size: 16px; }
+
+.section-title {
+  position: relative;
+  padding-left: 30px;
+  color: #18221b;
+  font-family: Georgia,"Songti SC",STSong,serif;
+  font-size: 70px;
+  font-weight: 520;
+  letter-spacing: -.045em;
+  line-height: 1;
+}
+.section-title::before { content: ""; position: absolute; left: 0; top: .08em; width: 7px; height: .92em; background: var(--yellow); }
+
+#p01 {
+  color: var(--white);
+  background: radial-gradient(circle at 79% 40%,rgba(216,167,53,.16),transparent 28%),radial-gradient(circle at 100% 100%,rgba(45,115,79,.35),transparent 34%),linear-gradient(135deg,#061b12,#0d3825);
+}
+#p01::before { content: "01  课程内容介绍"; position: absolute; left: 82px; top: 54px; z-index: 5; color: rgba(255,250,240,.68); font-size: 16px; }
+#p01::after { content: "01 / 46"; position: absolute; right: 82px; bottom: 44px; z-index: 5; color: rgba(255,250,240,.68); font: 16px Georgia,serif; }
+#p01 .cover-copy { left: 110px; top: 290px; width: 720px; }
+#p01 .cover-kicker { display: inline-block; width: auto; padding: 12px 16px; color: #efd17a; border: 1px solid rgba(239,209,122,.34); font-size: 17px; letter-spacing: .12em; }
+#p01 .cover-title { margin-top: 34px; color: var(--white); font-family: Georgia,"Songti SC",STSong,serif; font-size: 118px; font-weight: 500; letter-spacing: -.07em; line-height: .9; }
+#p01 .cover-session-title { position: relative; margin-top: 54px; color: #efd17a; font-family: Georgia,"Songti SC",STSong,serif; font-size: 42px; font-weight: 600; }
+#p01 .cover-session-title::before { content: ""; position: absolute; left: 0; top: -27px; width: 88px; height: 6px; background: #d8a735; }
+#p01 .cover-question { margin-top: 20px; max-width: 670px; color: rgba(255,250,240,.7); font-size: 24px; line-height: 1.55; }
+#p01 .cover-meta { display: none; }
+#p01 .cover-image { left: 910px; top: 150px; width: 880px; height: 700px; border: 1px solid rgba(239,209,122,.28); border-radius: 0; box-shadow: none; }
+#p01 .cover-image img { border-radius: 0; }
+#p01 .cover-ep { left: 910px; width: 880px; bottom: 229px; border-radius: 0; background: rgba(6,27,18,.82); }
+
+#p05 { color: var(--white); background: radial-gradient(circle at 78% 40%,rgba(216,167,53,.16),transparent 28%),linear-gradient(135deg,#061b12,#0d3825); }
+#p05 .page::before { color: #efd17a; }
+#p05 .page::after { color: rgba(255,250,240,.62); }
+#p05 .section-title { color: var(--white); }
+
+.goal-card,.goal-row,.course-part,.result-card,.topic-card,.topic-panel,.topic-hook,.topic-boundary,.footer-note {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.goal-row,.course-part,.result-card { border: 1px solid var(--line); background: rgba(255,250,240,.78); }
+.course-part { border-top: 6px solid var(--navy-2); }
+.course-practice-line { border-radius: 0; background: var(--navy); }
+.result-card { border-top: 5px solid var(--yellow); }
+.result-title,.course-part h3,.goal-copy strong { color: var(--navy); font-family: Georgia,"Songti SC",STSong,serif; }
+.result-preview,.result-preview img { border-radius: 0 !important; }
+.play-mark,.goal-num,.result-no { background: var(--yellow); color: #061b12; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,*::before,*::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}

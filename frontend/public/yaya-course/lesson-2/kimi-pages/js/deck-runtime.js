@@ -1,7 +1,7 @@
-/* Shared renderer for P06-P44. Avoid placing page copy in this file. */
+/* Shared renderer for P06-P48. Avoid placing page copy in this file. */
 
 const query = new URLSearchParams(location.search);
-const pageNumber = Math.max(6, Math.min(44, Number(query.get("slide")) || 6));
+const pageNumber = Math.max(6, Math.min(48, Number(query.get("slide")) || 6));
 const page = slides[pageNumber];
 const root = document.getElementById("slide");
 
@@ -123,6 +123,84 @@ const tableContent = (data) => {
 };
 
 const renderBody = (data) => {
+  if (data.kind === "practice-plan") {
+    return `
+      <div class="practice-one">
+        <div class="practice-task-column">
+          <div class="practice-task-intro"><span>小组任务</span><strong>${data.task}</strong></div>
+          <div class="practice-step-list">
+            ${data.steps.map((item, index) => `<article><b>${String(index + 1).padStart(2, "0")}</b><div><h2>${item[0]}</h2><p>${item[1]}</p></div></article>`).join("")}
+          </div>
+        </div>
+        <div class="practice-visual-column">
+          <figure class="practice-hero"><img src="${A + data.img}" alt="四名小鸭学生共同讨论短片方案"></figure>
+          <div class="practice-deliverable"><span>本轮完成</span><strong>${data.deliverable}</strong></div>
+        </div>
+      </div>
+    `;
+  }
+  if (data.kind === "practice-assets") {
+    return `
+      <div class="practice-two">
+        <figure class="practice-asset-hero"><img src="${A + data.img}" alt="四名小鸭学生共同制作角色资产和关键帧"></figure>
+        <section class="practice-asset-actions">
+          <article class="practice-asset-action">
+            <header><b>小组共同确定</b><span>所有人使用同一套制作依据</span></header>
+            <div class="practice-asset-locks">${data.groupLocks.map((item, index) => `<article><b>${String(index + 1).padStart(2, "0")}</b><span>${item}</span></article>`).join("")}</div>
+          </article>
+          <article class="practice-asset-action">
+            <header><b>每个人完成</b><span>把自己的镜头变成确定画面</span></header>
+            <div class="practice-frame-decisions">${data.frameTasks.map((item) => `<article><b>${item[0]}</b><p>${item[1]}</p></article>`).join("")}</div>
+          </article>
+          <div class="practice-check-line"><span>小组一起看</span><strong>${data.check}</strong></div>
+        </section>
+      </div>
+    `;
+  }
+  if (data.kind === "practice-video") {
+    return `
+      <div class="practice-three">
+        <section class="practice-video-flow">
+          ${data.steps.map((item, index) => `${index ? '<div class="practice-flow-link"></div>' : ""}<article class="practice-video-step ${index === 1 ? "is-focus" : ""}"><b>${String(index + 1).padStart(2, "0")}</b><div><h2>${item[0]}</h2><p>${item[1]}</p></div></article>`).join("")}
+        </section>
+        <section class="practice-video-visual">
+          <figure><img src="${A + data.img}" alt="小鸭学生使用关键帧生成视频"></figure>
+          <div class="practice-formula"><span>提示词重点</span><strong>${data.formula}</strong></div>
+        </section>
+        <footer class="practice-individual-output"><span>每人交付</span><strong>${data.deliverable}</strong></footer>
+      </div>
+    `;
+  }
+  if (data.kind === "practice-edit") {
+    return `
+      <div class="practice-four">
+        <section class="practice-assembly">
+          <div class="practice-clip-row">${data.clips.map((item, index) => `${index ? "<i>→</i>" : ""}<article><b>${String(index + 1).padStart(2, "0")}</b><span>${item}</span></article>`).join("")}</div>
+          <div class="practice-film-result"><span>小组成片</span><strong>${data.result}</strong><p>${data.transitionNote}</p></div>
+        </section>
+        <section class="practice-finish-grid">
+          <figure class="practice-finish-hero"><img src="${A + data.img}" alt="四名小鸭学生将四段胶片拼成完整故事"></figure>
+          <div class="practice-final-checks">
+            <header><b>播放前检查</b><span>小组四个人一起看一遍</span></header>
+            ${data.checks.map((item, index) => `<article><b>${String(index + 1).padStart(2, "0")}</b><p>${item}</p></article>`).join("")}
+          </div>
+        </section>
+      </div>
+    `;
+  }
+  if (data.kind === "homework") {
+    return `
+      <div class="homework-layout">
+        <section class="homework-tasks">
+          ${data.tasks.map((item, index) => `<article><b>${String(index + 1).padStart(2, "0")}</b><div><h2>${item[0]}</h2><p>${item[1]}</p></div></article>`).join("")}
+        </section>
+        <section class="submission-pack">
+          <span>${data.packageTitle}</span><strong>${data.packageFormula}</strong><h2>${data.packageSummary}</h2>
+          <div class="pack-list">${data.packageItems.map((item) => `<p><b>${item[0]}</b>${item[1]}</p>`).join("")}</div>
+        </section>
+      </div>
+    `;
+  }
   if (data.kind === "ip-intro") {
     return `
       <div class="ip-intro">
@@ -937,9 +1015,10 @@ const renderBody = (data) => {
   `;
 };
 
-const darkPages = new Set([20, 24, 35, 36, 37, 38, 39]);
+const darkPages = new Set([20, 24, 35, 36, 37, 38, 39, 44, 45, 46, 47, 48]);
 const bodyContent = renderBody(page);
 const isProjectPage = pageNumber >= 20;
+const isPracticePage = page.kind.startsWith("practice-");
 const ioHtml = isProjectPage && !page.hideIo
   ? `
   <div class="io-strip">
@@ -951,20 +1030,30 @@ const ioHtml = isProjectPage && !page.hideIo
   : "";
 const noteHtml = page.note ? `<div class="takeaway">${page.note}</div>` : "";
 
-root.className = `${darkPages.has(pageNumber) ? "dark-slide " : ""}${isProjectPage ? "project-slide " : ""}${page.hideIo ? "no-io" : ""}`.trim();
-root.innerHTML = `
-  <h1 class="page-title">${page.k}</h1>
-  <div class="body ${page.note ? "with-note" : ""}">${noteHtml}${bodyContent}</div>
-  ${isProjectPage ? '<div class="section-tag">真实项目拆解｜鸭鸭 EP04</div>' : ""}
-  ${ioHtml}
-`;
+root.className = `${darkPages.has(pageNumber) ? "dark-slide " : ""}${isProjectPage ? "project-slide " : ""}${isPracticePage ? "practice-slide " : ""}${page.hideIo ? "no-io " : ""}page-${pageNumber}`.trim();
+root.innerHTML = isPracticePage
+  ? `
+    <p class="practice-kicker">${page.k}</p>
+    <h1 class="practice-title">${page.h}</h1>
+    <div class="practice-rule"></div>
+    <div class="practice-number">${page.practiceNo}</div>
+    <div class="body practice-body">${bodyContent}</div>
+  `
+  : `
+    <h1 class="page-title">${page.k}</h1>
+    <div class="body ${page.note ? "with-note" : ""}">${noteHtml}${bodyContent}</div>
+    ${isProjectPage ? `<div class="section-tag">${page.sectionTag || "真实项目拆解｜鸭鸭 EP04"}</div>` : ""}
+    ${ioHtml}
+  `;
 
 if (isProjectPage) {
-  const moduleStartPages = [20, 22, 24, 26, 29, 32, 35, 38, 40, 43, 45];
-  const activeModule = moduleStartPages.findIndex(
-    (start, index) =>
-      pageNumber >= start && pageNumber < (moduleStartPages[index + 1] || 45),
-  );
+  const moduleStartPages = [20, 22, 24, 26, 29, 32, 35, 38, 40, 43];
+  const activeModule = Number.isInteger(page.moduleIndex)
+    ? page.moduleIndex
+    : moduleStartPages.findIndex(
+        (start, index) =>
+          pageNumber >= start && pageNumber < (moduleStartPages[index + 1] || Number.POSITIVE_INFINITY),
+      );
   const moduleStrip = Array.from({ length: 10 }, (_, index) => {
     const state =
       index < activeModule ? "done" : index === activeModule ? "active" : "";
@@ -1025,6 +1114,11 @@ const setupPageMotion = () => {
     "edit-overlay-showcase": [[".edit-showcase-inputs > figure", "pop", 64], [".edit-showcase-result", "soft"], [".edit-showcase-more > span", "rise", 48]],
     "sound-sync-case": [[".sound-case-frame", "soft"], [".sound-avatar-row > figure", "pop", 70], [".sound-lane.dialogue span", "fill"], [".sound-lane.knocks i", "pop", 45], [".sound-post-role", "rise"], [".sound-mix-priority > article", "rise", 52]],
     "quality-check": [[".quality-check-subtitle", "soft"], [".quality-check-card", "rise", 58]],
+    "practice-plan": [[".practice-task-intro", "wipe"], [".practice-step-list > article", "rise", 52], [".practice-hero", "soft"], [".practice-deliverable", "rise"]],
+    "practice-assets": [[".practice-asset-hero", "soft"], [".practice-asset-action", "rise", 64], [".practice-check-line", "wipe"]],
+    "practice-video": [[".practice-video-step", "rise", 58], [".practice-video-visual > *", "soft", 64], [".practice-individual-output", "wipe"]],
+    "practice-edit": [[".practice-clip-row article", "pop", 54], [".practice-film-result", "rise"], [".practice-finish-hero", "soft"], [".practice-final-checks > *", "rise", 46]],
+    homework: [[".homework-tasks > article", "rise", 64], [".submission-pack", "soft"], [".pack-list > p", "rise", 48]],
     generic: [[".wide-points > .point, .points > .point", "rise", 58], [".split > .media-box", "soft"]],
   };
 

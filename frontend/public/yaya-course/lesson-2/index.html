@@ -2,12 +2,15 @@
 <html lang="zh-CN" data-resolution="landscape">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=1920, height=1080" />
     <meta name="description" content="鸭鸭特工队 AIGC 第2节课完整网页课件。" />
     <meta name="robots" content="noindex, nofollow" />
     <title>鸭鸭特工队 AIGC 第2节课</title>
     <link rel="icon" href="data:," />
     <script src="vendor/gsap.min.js"></script>
+    <script src="kimi-pages/js/slides-data.js?v=20260828-v11" defer></script>
+    <link rel="stylesheet" href="deck-nav.css?v=20260828-v11" />
+    <script src="deck-nav.js?v=20260828-v11" defer></script>
     <style>
       @font-face {
         font-family: "Microsoft YaHei";
@@ -316,12 +319,12 @@
         grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1fr);
         align-items: center;
         gap: 28px;
-        margin-top: 96px;
+        margin-top: 82px;
       }
       .course-part {
         position: relative;
         min-width: 0;
-        min-height: 610px;
+        min-height: 520px;
         padding: 64px 58px;
         border-radius: 42px;
         overflow: hidden;
@@ -355,14 +358,14 @@
       }
       .course-part .part-label {
         display: block;
-        margin-top: 72px;
+        margin-top: 54px;
         font-size: 30px;
         font-weight: 900;
         letter-spacing: 0.12em;
       }
       .course-part h3 {
         margin-top: 22px;
-        font-size: 76px;
+        font-size: 68px;
         line-height: 1.12;
         letter-spacing: -0.04em;
         overflow-wrap: anywhere;
@@ -373,6 +376,32 @@
         color: var(--blue);
         font-weight: 900;
         text-align: center;
+      }
+      .course-practice-line {
+        display: grid;
+        grid-template-columns: 260px 1fr;
+        align-items: center;
+        min-height: 74px;
+        margin-top: 66px;
+        overflow: hidden;
+        border-radius: 22px;
+        background: var(--navy);
+        color: var(--white);
+        box-shadow: 0 14px 28px rgba(43, 76, 104, 0.14);
+      }
+      .course-practice-line b {
+        align-self: stretch;
+        display: grid;
+        place-items: center;
+        background: var(--yellow);
+        color: var(--navy);
+        font-size: 24px;
+      }
+      .course-practice-line span {
+        padding: 0 30px;
+        font-size: 25px;
+        line-height: 1.4;
+        font-weight: 900;
       }
 
       /* P04 */
@@ -824,8 +853,7 @@
         color: #62382f;
       }
     </style>
-    <link rel="stylesheet" href="deck-nav.css?v=20260825-1" />
-    <script src="deck-nav.js?v=20260825-1" defer></script>
+    <link rel="stylesheet" href="session02-theme.css?v=20260828-v11" />
   </head>
   <body>
     <script type="application/hyperframes-slideshow+json">
@@ -875,8 +903,9 @@
       >
         <i id="p01-seek-marker" class="seek-marker"></i>
         <div class="cover-copy">
-          <div class="cover-kicker">鸭鸭特工队 · 学生共创指导课 / 第二节课</div>
-          <h1 class="cover-title">从创意<span>到成片</span></h1>
+          <div class="cover-kicker">AIGC COURSE · SESSION 02</div>
+          <h1 class="cover-title">AIGC课程</h1>
+          <h2 class="cover-session-title">从创意到成片</h2>
           <p class="cover-question">
             一条完整的 AI 短片，是怎么从一句话的选题做出来的？
           </p>
@@ -976,6 +1005,10 @@
               ><span class="part-label">第二部分</span>
               <h3>实战案例分析</h3>
             </article>
+          </div>
+          <div class="course-practice-line">
+            <b>小组实操线</b>
+            <span>第二部分边拆解案例，边完成自己的四镜头短片</span>
           </div>
         </div>
       </section>
@@ -1206,6 +1239,7 @@
           timeline.fromTo("#p03 .section-title", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.62, ease: "power3.out" }, start);
           timeline.fromTo("#p03 .course-part", { opacity: 0, y: 34, scale: 0.97 }, { opacity: 1, y: 0, scale: 1, duration: 0.78, stagger: 0.32, ease: "power2.out" }, start + 0.22);
           timeline.fromTo("#p03 .course-arrow", { opacity: 0, scale: 0.7 }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(1.6)" }, start + 0.72);
+          timeline.fromTo("#p03 .course-practice-line", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.58, ease: "power2.out" }, start + 0.88);
         }
         if (id === "p04") {
           timeline.fromTo("#p04 .section-title", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.62, ease: "power3.out" }, start);
