@@ -1172,7 +1172,7 @@ def _build_openai_image_edit_files(reference_images: Optional[List[str]] = None)
     files: List[Tuple[str, Tuple[str, bytes, str]]] = []
     for index, image_data in enumerate(_normalize_reference_images(image_datas=reference_images), start=1):
         filename, raw_bytes, mime_type = _decode_reference_image_upload(image_data, index=index)
-        files.append(("image[]", (filename, raw_bytes, mime_type)))
+        files.append(("image", (filename, raw_bytes, mime_type)))
     return files
 
 

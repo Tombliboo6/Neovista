@@ -393,7 +393,7 @@ class GenerateBillingFlowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_RecordingAsyncClient.last_data["quality"], "low")
         self.assertEqual(_RecordingAsyncClient.last_headers["Authorization"], "Bearer key-2")
         self.assertEqual(len(_RecordingAsyncClient.last_files), 1)
-        self.assertEqual(_RecordingAsyncClient.last_files[0][0], "image[]")
+        self.assertEqual(_RecordingAsyncClient.last_files[0][0], "image")
         self.assertEqual(_RecordingAsyncClient.last_files[0][1][0], "reference-1.png")
         self.assertEqual(_RecordingAsyncClient.last_files[0][1][2], "image/png")
 

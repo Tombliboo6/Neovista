@@ -51,7 +51,7 @@ class TemplatePromptPreviewTest(unittest.TestCase):
         self.assertNotIn("自然光照，柔和阴影", prompt)
 
     def test_prompt_preview_route_is_registered(self):
-        paths = {route.path for route in main.app.routes}
+        paths = {getattr(route, "path", None) for route in main.app.routes}
 
         self.assertIn("/api/v1/templates/{template_id}/prompt-preview", paths)
 
