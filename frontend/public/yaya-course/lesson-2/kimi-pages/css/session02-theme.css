@@ -1,0 +1,118 @@
+:root {
+  --paper: #f7f1e5;
+  --paper2: #eee4d2;
+  --navy: #0d3825;
+  --navy2: #155136;
+  --blue: #226748;
+  --yellow: #d8a735;
+  --yellow2: #bd8b24;
+  --red: #a84f3d;
+  --muted: #647067;
+  --white: #fffaf0;
+  --line: rgba(25,56,38,.17);
+}
+
+html,body {
+  color: #18221b;
+  background: var(--paper);
+  font-family: "PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif;
+}
+body::before {
+  opacity: 1;
+  background-image: linear-gradient(rgba(21,81,54,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(21,81,54,.025) 1px,transparent 1px);
+  background-size: 83px 83px;
+}
+
+#slide { padding: 68px 94px 62px; background: radial-gradient(circle at 88% 11%,rgba(216,167,53,.11),transparent 21%); }
+#slide::before { content: "SESSION 02"; position: absolute; right: 82px; top: 58px; z-index: 20; color: var(--navy2); font-size: 17px; font-weight: 900; letter-spacing: .16em; }
+#slide::after { content: "鸭鸭特工队 · 学生共创指导课"; position: absolute; left: 94px; bottom: 34px; z-index: 20; color: rgba(24,34,27,.58); font-size: 16px; }
+
+.page-title,.practice-title,h1,h2,h3 {
+  font-family: Georgia,"Songti SC",STSong,serif;
+}
+.page-title,.practice-title {
+  position: relative;
+  padding-left: 30px;
+  color: #18221b;
+  font-size: 66px;
+  font-weight: 520;
+  letter-spacing: -.045em;
+  line-height: 1;
+}
+.page-title::before,.practice-title::before { content: ""; position: absolute; left: 0; top: .08em; width: 7px; height: .92em; background: var(--yellow); }
+.practice-kicker { color: var(--yellow2); letter-spacing: .1em; }
+.practice-number { color: var(--yellow2); border-color: var(--yellow); border-radius: 0; background: rgba(216,167,53,.08); }
+
+.panel,.point,.quote,.story-copy,.script-copy,.mode-card,.mode-case,.media-box,.gallery figure,.table,.topic-card,.topic-hook,.topic-rationale,.ip-board,.control-focus-card,.control-prompt,.control-locks,.keyframe-control-card,.prompt-section,.case-video-card,.case-video-player,.case-video-copy,.case-video-facts section,.post-production-item,.quality-check-card,.practice-task-intro,.practice-step-list article,.practice-hero,.practice-deliverable,.practice-asset-hero,.practice-asset-action,.practice-asset-locks article,.practice-frame-decisions article,.practice-check-line,.practice-video-step,.practice-video-visual,.practice-formula,.practice-individual-output,.practice-clip-row article,.practice-film-result,.practice-finish-hero,.practice-final-checks,.practice-final-checks article,.homework-tasks article,.submission-pack,.io-strip,.section-tag,.takeaway {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.panel,.point,.story-copy,.mode-card,.media-box,.gallery figure,.topic-card,.keyframe-control-card,.case-video-card,.post-production-item,.quality-check-card,.practice-task-intro,.practice-step-list article,.practice-asset-action,.practice-video-step,.homework-tasks article {
+  border-color: var(--line);
+  background: rgba(255,250,240,.78);
+}
+.panel,.mode-card,.case-video-card,.quality-check-card { border-top-color: var(--yellow); }
+.point,.story-copy { border-left-color: var(--yellow); }
+.panel.dark,.quote,.script-copy,.practice-video-step.is-focus,.practice-individual-output,.practice-film-result { background: var(--navy); color: var(--white); }
+
+.media-box img,.media-box video,.gallery img,.mode-case video,.case-video-player video,.practice-hero img,.practice-asset-hero img,.practice-video-visual img,.practice-finish-hero img {
+  border-radius: 0 !important;
+}
+.media-label { border-radius: 0; color: var(--white); background: rgba(6,27,18,.82); }
+.mode-case-meta span,.section-tag,.practice-number,.script-cue { border-radius: 0 !important; }
+.mode-case-meta span { color: var(--navy); border-color: var(--line); background: rgba(216,167,53,.1); }
+
+.section-tag { color: var(--white); background: var(--navy); }
+.module-strip { background: rgba(13,56,37,.13); }
+.module-strip span { background: rgba(13,56,37,.16); }
+.module-strip span.done { background: var(--navy2); }
+.module-strip span.active { background: var(--yellow); }
+.io-strip { border-color: var(--line); background: rgba(255,250,240,.82); }
+.io-cell b { color: var(--yellow2); }
+
+.dark-slide,.practice-slide {
+  color: var(--white);
+  background: radial-gradient(circle at 79% 40%,rgba(216,167,53,.16),transparent 28%),radial-gradient(circle at 100% 100%,rgba(45,115,79,.35),transparent 34%),linear-gradient(135deg,#061b12,#0d3825) !important;
+}
+.dark-slide::before,.practice-slide::before { color: var(--yellow) !important; }
+.dark-slide::after,.practice-slide::after { color: rgba(255,250,240,.62) !important; }
+.dark-slide .page-title,.practice-slide .practice-title { color: var(--white); }
+.dark-slide .point,.practice-slide .practice-step-list article,.practice-slide .practice-task-intro,.practice-slide .practice-asset-action,.practice-slide .practice-video-step,.practice-slide .practice-final-checks { color: var(--white); border-color: rgba(255,250,240,.18); background: rgba(255,255,255,.045); }
+.dark-slide .point p,.practice-slide p { color: rgba(255,250,240,.72); }
+.practice-slide .practice-kicker,.practice-slide .practice-number { color: var(--yellow); }
+.practice-slide .practice-number { border-color: rgba(239,209,122,.34); background: rgba(216,167,53,.1); }
+.practice-slide .practice-deliverable,.practice-slide .practice-formula,.practice-slide .practice-check-line { border-color: rgba(239,209,122,.3); background: rgba(216,167,53,.1); }
+.practice-slide .practice-asset-locks article,.practice-slide .practice-frame-decisions article,.practice-slide .practice-video-step { color: var(--white); border-color: rgba(255,250,240,.18); background: rgba(255,255,255,.045); }
+
+/* Light content panels on dark teaching pages use dark copy for classroom readability. */
+.dark-slide .case-video-card { background: rgba(255,250,240,.9); }
+.dark-slide .case-video-copy > header { border-bottom-color: rgba(25,56,38,.16); }
+.dark-slide .case-video-copy > header > b,
+.dark-slide .case-video-copy > header span,
+.dark-slide .case-video-facts section b { color: var(--yellow2); }
+.dark-slide .case-video-copy > header h2 { color: var(--navy); }
+.dark-slide .case-video-facts section { background: rgba(255,255,255,.62); }
+.dark-slide .case-video-facts section p { color: #1f3f2d; }
+.dark-slide .case-video-facts .case-result { background: rgba(216,167,53,.2); }
+
+.practice-slide .practice-final-checks article {
+  color: var(--navy);
+  background: rgba(255,250,240,.9);
+  border-color: var(--yellow);
+}
+.practice-slide .practice-final-checks article p { color: #1f3f2d; }
+
+.dark-slide .homework-tasks article { color: var(--white); border-color: rgba(255,250,240,.18); background: rgba(255,255,255,.045); }
+.dark-slide .homework-tasks h2 { color: var(--white); }
+.dark-slide .homework-tasks p { color: rgba(255,250,240,.7); }
+.dark-slide .submission-pack { color: var(--white); border-color: rgba(239,209,122,.3); background: rgba(216,167,53,.09); }
+.dark-slide .submission-pack strong,.dark-slide .submission-pack b { color: var(--yellow); }
+
+table { border-collapse: collapse; }
+th { color: var(--white); background: var(--navy); }
+td { border-color: var(--line); background: rgba(255,250,240,.66); }
+
+@media (prefers-reduced-motion: reduce) {
+  *,*::before,*::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}

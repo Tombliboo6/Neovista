@@ -1,0 +1,189 @@
+:root {
+  --deck-nav-green: #0d3825;
+  --deck-nav-green-2: #155136;
+  --deck-nav-gold: #d8a735;
+  --deck-nav-paper: #fffaf0;
+}
+
+html,
+body {
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  background: #061b12 !important;
+}
+
+#deck-stage {
+  position: fixed;
+  inset: 0 0 78px;
+  overflow: hidden;
+}
+
+#deck-canvas {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  background: #f7f1e5;
+  border: 1px solid rgba(255, 250, 240, 0.34);
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.42);
+  transform-origin: center center;
+}
+
+#deck-controls {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  z-index: 1000;
+  width: min(760px, calc(100vw - 28px));
+  height: 52px;
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: 46px 46px 60px 60px 1fr 76px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px;
+  border: 1px solid rgba(255, 250, 240, 0.18);
+  background: rgba(6, 27, 18, 0.96);
+  color: var(--deck-nav-paper);
+}
+
+#deck-controls button {
+  height: 36px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 250, 240, 0.16);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--deck-nav-paper);
+  font: 800 14px/1 "Microsoft YaHei", sans-serif;
+  cursor: pointer;
+}
+
+#deck-controls button:hover,
+#deck-controls button:focus-visible {
+  color: #fff3c1;
+  border-color: var(--deck-nav-gold);
+  outline: none;
+}
+
+#deck-controls button:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+
+#deck-progress {
+  height: 4px;
+  overflow: hidden;
+  background: rgba(255, 250, 240, 0.16);
+}
+
+#deck-progress i {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--deck-nav-gold);
+}
+
+#deck-counter {
+  text-align: center;
+  color: rgba(255, 250, 240, 0.8);
+  font: 900 13px/1 "Microsoft YaHei", sans-serif;
+  letter-spacing: 0.08em;
+}
+
+#deck-toc {
+  width: min(920px, calc(100vw - 36px));
+  max-height: min(760px, calc(100vh - 60px));
+  padding: 0;
+  color: #18221b;
+  border: 1px solid rgba(255, 250, 240, 0.3);
+  border-radius: 0;
+  background: #f7f1e5;
+}
+
+#deck-toc::backdrop {
+  background: rgba(3, 16, 10, 0.78);
+}
+
+.deck-toc-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  color: var(--deck-nav-paper);
+  background: var(--deck-nav-green);
+  border-bottom: 5px solid var(--deck-nav-gold);
+}
+
+.deck-toc-head strong {
+  font: 700 26px/1.2 Georgia, "Songti SC", STSong, serif;
+}
+
+.deck-toc-head button {
+  padding: 8px 12px;
+  color: var(--deck-nav-paper);
+  border: 1px solid rgba(255, 250, 240, 0.35);
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+#deck-toc-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  padding: 1px;
+  overflow-y: auto;
+  background: rgba(13, 56, 37, 0.16);
+}
+
+#deck-toc-list button {
+  min-height: 62px;
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+  text-align: left;
+  color: #1f3f2d;
+  border: 0;
+  border-left: 4px solid transparent;
+  border-radius: 0;
+  background: rgba(255, 250, 240, 0.94);
+  cursor: pointer;
+}
+
+#deck-toc-list button:hover,
+#deck-toc-list button.active {
+  border-left-color: var(--deck-nav-gold);
+  background: #fffaf0;
+}
+
+#deck-toc-list b {
+  color: #bd8b24;
+  font-size: 15px;
+}
+
+#deck-toc-list span {
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 750;
+}
+
+@media (max-width: 760px) {
+  #deck-stage { bottom: 68px; }
+  #deck-controls {
+    bottom: 8px;
+    height: 48px;
+    grid-template-columns: 42px 42px 52px 52px 1fr 66px;
+  }
+  #deck-controls button { padding: 0 6px; font-size: 12px; }
+  #deck-toc-list { grid-template-columns: 1fr; }
+}

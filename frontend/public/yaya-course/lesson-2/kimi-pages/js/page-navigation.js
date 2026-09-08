@@ -1,0 +1,1 @@
+addEventListener("keydown",e=>{if(e.target.closest("input,textarea,video,audio,button")||document.querySelector("dialog[open]"))return;if(parent!==window&&["ArrowRight","PageDown","ArrowLeft","PageUp","Home","End"].includes(e.key)){e.preventDefault();parent.postMessage({type:"lesson-nav",direction:["ArrowRight","PageDown"].includes(e.key)?1:-1,key:e.key},"*");}});
