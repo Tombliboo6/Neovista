@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>鸭鸭实操素材库</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<a class="skip" href="#workspace">跳到示例内容</a>
+<aside class="sidebar">
+  <a class="brand" href="#book"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M12 13C12 3 21 3 21 10C28 4 32 13 23 16M20 13C10 13 5 24 6 30C7 37 34 37 35 30C36 24 28 13 20 13Z"/><circle cx="15" cy="25" r="1"/><circle cx="26" cy="25" r="1"/><path d="m18 29 3 2 3-2"/></svg></span><span>鸭鸭特工队<small>AIGC 实操素材库</small></span></a>
+  <p class="nav-heading">选择生成方式</p><nav id="categories" aria-label="生成方式"></nav>
+  <div class="side-bottom"><button id="guide-toggle" type="button">课后资料 <span aria-hidden="true">↗</span></button><p>第二节课 · 个人实操<br>选一个示例，开始你的创作。</p></div>
+</aside>
+<main id="workspace" tabindex="-1">
+  <header class="topbar"><span>从参考到作品</span><span class="offline"><i></i> 离线资料</span></header>
+  <section class="intro"><h1 id="group-title"></h1><p id="group-desc"></p></section>
+  <nav id="examples" aria-label="选择示例"></nav>
+  <section id="detail" aria-label="示例详情"></section>
+  <section id="guides" hidden><div class="section-heading"><h2>课后资料</h2><button id="guide-close" class="plain">返回示例</button></div><p class="muted">提示词结构、角色设定与摄影语言，留作练习时查阅。</p><div id="guide-list"></div></section>
+  <footer>鸭鸭特工队 AIGC 课程<span>图片与视频素材随资料包提供</span></footer>
+</main>
+<div id="toast" role="status" aria-live="polite"></div>
+<noscript>请在浏览器中启用 JavaScript，或直接打开 assets 文件夹查看图片、视频和提示词文本。</noscript>
+<script src="data.js"></script><script src="app.js"></script>
+</body></html>

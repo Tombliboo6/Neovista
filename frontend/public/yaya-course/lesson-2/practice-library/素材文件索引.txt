@@ -1,0 +1,50 @@
+素材文件索引
+上传时按网页提示选择对应文件。
+
+书中校园
+  效果：assets/book.png
+  提示词：assets/book-prompt.txt
+
+云端图书馆
+  效果：assets/cloud.png
+  提示词：assets/cloud-prompt.txt
+
+情绪天气瓶
+  效果：assets/bottle.png
+  提示词：assets/bottle-prompt.txt
+
+宇航员鸭鸭
+  效果：assets/space-three-ducks.png
+  提示词：assets/space-three-ducks-prompt.txt
+  图 1 · 饭团：assets/space-board-fantuan.png
+  图 2 · 小小：assets/space-board-xiaoxiao.png
+  图 3 · 馒头：assets/space-board-mantou.png
+
+玩具变巨龙
+  效果：assets/dragon.mp4
+  提示词：assets/dragon-prompt.txt
+
+积木飞船
+  效果：assets/bricks.mp4
+  提示词：assets/bricks-prompt.txt
+
+越野车冲破水幕
+  效果：assets/offroad.mp4
+  提示词：assets/offroad-prompt.txt
+
+失重抢饼干
+  效果：assets/cookie.mp4
+  提示词：assets/cookie-prompt.txt
+  首帧：assets/cookie-first.png
+
+纸箱飞船升级
+  效果：assets/ship.mp4
+  提示词：assets/ship-prompt.txt
+  首帧：assets/ship-first.png
+  尾帧：assets/ship-last.png
+
+饭团城市摆荡
+  效果：assets/swing.mp4
+  提示词：assets/swing-prompt.txt
+  图片1 · 角色参考：assets/swing-character.png
+  视频1 · 动作参考：assets/swing-reference.mp4

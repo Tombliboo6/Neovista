@@ -1,7 +1,7 @@
 /* Shared renderer for P06-P48. Avoid placing page copy in this file. */
 
 const query = new URLSearchParams(location.search);
-const pageNumber = Math.max(6, Math.min(48, Number(query.get("slide")) || 6));
+const pageNumber = Math.max(1, Math.min(Math.max(...Object.keys(slides).map(Number)), Number(query.get("slide")) || 6));
 const page = slides[pageNumber];
 const root = document.getElementById("slide");
 
@@ -347,15 +347,14 @@ const renderBody = (data) => {
       <div class="full-storyboard">
         <div class="full-storyboard-toolbar">
           <div><b>前期分镜表结构示例</b><span>57条镜头节拍｜声音合并在“画面内容”</span></div>
-          <em>${data.focusLabel}</em>
         </div>
         <div class="full-storyboard-scroll" data-storyboard-source="${A + data.storyboardSource}">
           <table>
             <thead><tr>
               <th>编号</th><th>作用</th><th>时长</th><th>景别与机位</th>
-              <th>画面内容（含对白与声音）</th><th>衔接</th><th>对应素材</th><th>素材状态</th>
+              <th>画面内容（含对白与声音）</th><th>衔接</th><th>对应素材</th>
             </tr></thead>
-            <tbody><tr><td colspan="8" class="storyboard-loading">正在载入完整分镜表……</td></tr></tbody>
+            <tbody><tr><td colspan="7" class="storyboard-loading">正在载入完整分镜表……</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -390,7 +389,7 @@ const renderBody = (data) => {
           .map(
             (choice, index) => `
           <article class="generation-choice-card ${choice.active ? "is-active" : ""}">
-            <div class="generation-choice-media ${choice.imgs.length > 1 ? "is-multi" : ""}">
+            <div class="generation-choice-media ${choice.imgs.length > 2 ? "is-quad" : choice.imgs.length > 1 ? "is-multi" : ""}">
               ${choice.imgs
                 .map(
                   (img, imageIndex) => `<figure><img src="${A + img}" alt="${choice.imageLabels[imageIndex]}"><figcaption>${choice.imageLabels[imageIndex]}</figcaption></figure>`,
@@ -400,7 +399,7 @@ const renderBody = (data) => {
             </div>
             <div class="generation-choice-copy">
               <span>${choice.label}</span><h2>${choice.title}</h2>
-              <blockquote><b>分镜原文节选</b>${choice.source}</blockquote>
+              <blockquote><b>${choice.sourceLabel || "分镜原文节选"}</b>${choice.source}</blockquote>
               <p>${choice.text}</p>
               ${choice.badge ? `<em>${choice.badge}</em>` : ""}
             </div>
@@ -481,7 +480,7 @@ const renderBody = (data) => {
             <div class="kfg-prompt-details">
               ${data.promptDetails.map((item, index) => `<section><b>${String(index + 1).padStart(2, "0")}</b><div><h2>${item[0]}</h2><p>${item[1]}</p></div></section>`).join("")}
             </div>
-            <footer>${data.promptFoot}</footer>
+            <footer>${data.promptFoot}${lessonButtons(data)}</footer>
           </article>
           <div class="kfg-symbol">→</div>
           <figure class="kfg-result">
@@ -514,6 +513,7 @@ const renderBody = (data) => {
           ${data.changes.map((item, index) => `<article><h2>${["位置变化", "动作变化", "情绪变化"][index]}</h2><p>${item}</p></article>`).join("")}
           <article><h2>保持一致</h2><p>${data.keepShort || data.keep}</p></article>
         </section>
+        <div class="kfc-prompt-actions"><span>${data.promptNotice || ''}</span>${lessonButtons(data)}</div>
       </div>
     `;
   }
@@ -588,7 +588,8 @@ const renderBody = (data) => {
             <div><b>完整脚本</b><span>${data.scriptLabel}</span></div>
             <em>可滚动查看全部</em>
           </div>
-          <pre class="full-script-copy" data-script-source="${A + data.scriptSource}">正在载入 EP04 完整脚本……</pre>
+          <nav class="script-jump" aria-label="完整脚本快速定位"><button data-script-jump="script-overview">概况</button><button data-script-jump="script-plan">计划本</button><button data-script-jump="script-timeline">详细脚本</button><button data-script-jump="script-explanation">核心解释</button><button data-script-jump="script-ending">结尾</button></nav>
+          <div class="full-script-copy script-formatted" data-script-source="${A + data.scriptSource}">正在载入 EP04 完整脚本……</div>
         </section>
         <section class="script-analysis">
           <div class="script-summary"><b>脚本的作用</b><p>${data.scriptSummary}</p></div>
@@ -698,7 +699,7 @@ const renderBody = (data) => {
             <div class="mode-case-meta">${data.meta.map((item) => `<span>${item}</span>`).join("")}</div>
           </div>
           <div class="mode-case-prompt">
-            <div class="mode-case-prompt-head"><b>即梦完整视频提示词</b><span>向下滚动查看全部</span></div>
+            <div class="mode-case-prompt-head"><b>${data.promptLabel || "案例实际使用的提示词"}</b><span>向下滚动查看全部</span></div>
             ${promptSections(data.prompt)}
           </div>
         </div>
@@ -1015,8 +1016,8 @@ const renderBody = (data) => {
   `;
 };
 
-const darkPages = new Set([20, 24, 35, 36, 37, 38, 39, 44, 45, 46, 47, 48]);
-const bodyContent = renderBody(page);
+const darkPages = new Set([1,20,24,36,45,46,47,48,49]);
+const bodyContent = renderLessonPage(page) ?? renderBody(page);
 const isProjectPage = pageNumber >= 20;
 const isPracticePage = page.kind.startsWith("practice-");
 const ioHtml = isProjectPage && !page.hideIo
@@ -1030,7 +1031,7 @@ const ioHtml = isProjectPage && !page.hideIo
   : "";
 const noteHtml = page.note ? `<div class="takeaway">${page.note}</div>` : "";
 
-root.className = `${darkPages.has(pageNumber) ? "dark-slide " : ""}${isProjectPage ? "project-slide " : ""}${isPracticePage ? "practice-slide " : ""}${page.hideIo ? "no-io " : ""}page-${pageNumber}`.trim();
+root.className = `${darkPages.has(pageNumber) ? "dark-slide " : ""}${isProjectPage ? "project-slide " : ""}${isPracticePage ? "practice-slide " : ""}${page.caseStudy ? "case-study-page " : ""}${page.hideIo ? "no-io " : ""}${page.kind.startsWith("lesson-") || page.kind === "practice-personal" ? page.kind : ""} page-${pageNumber}`.trim();
 root.innerHTML = isPracticePage
   ? `
     <p class="practice-kicker">${page.k}</p>
@@ -1041,12 +1042,13 @@ root.innerHTML = isPracticePage
   `
   : `
     <h1 class="page-title">${page.k}</h1>
+    ${page.caseStudy ? `<p class="case-study-context">${page.caseStudy}</p>` : ""}
     <div class="body ${page.note ? "with-note" : ""}">${noteHtml}${bodyContent}</div>
     ${isProjectPage ? `<div class="section-tag">${page.sectionTag || "真实项目拆解｜鸭鸭 EP04"}</div>` : ""}
     ${ioHtml}
   `;
 
-if (isProjectPage) {
+if (false) {
   const moduleStartPages = [20, 22, 24, 26, 29, 32, 35, 38, 40, 43];
   const activeModule = Number.isInteger(page.moduleIndex)
     ? page.moduleIndex
@@ -1184,7 +1186,11 @@ const fullScriptCopy = root.querySelector("[data-script-source]");
 if (fullScriptCopy) {
   loadTextAsset(fullScriptCopy.dataset.scriptSource)
     .then((scriptText) => {
-      fullScriptCopy.textContent = scriptText;
+      fullScriptCopy.innerHTML = renderFullScript(scriptText);
+      root.querySelectorAll('[data-script-jump]').forEach(button => button.addEventListener('click', () => {
+        const target=fullScriptCopy.querySelector('#'+button.dataset.scriptJump);
+        if(target){fullScriptCopy.scrollTop+=target.getBoundingClientRect().top/ (root.getBoundingClientRect().width/root.offsetWidth)-fullScriptCopy.getBoundingClientRect().top/(root.getBoundingClientRect().width/root.offsetWidth)-20;fullScriptCopy.focus({preventScroll:true});}
+      }));
     })
     .catch(() => {
       fullScriptCopy.textContent = "完整脚本载入失败，请刷新页面后重试。";
@@ -1206,7 +1212,7 @@ if (fullStoryboard) {
           .slice(1, -1)
           .split(/(?<!\\)\|/)
           .map((cell) => cell.trim().replace(/\\\|/g, "|"));
-        if (cells.length === 8) parsedRows.push(cells);
+        if (cells.length === 8) parsedRows.push(cells.slice(0, 7));
       }
       const tbody = fullStoryboard.querySelector("tbody");
       tbody.innerHTML = parsedRows
@@ -1221,6 +1227,7 @@ if (fullStoryboard) {
     })
     .catch(() => {
       fullStoryboard.querySelector("tbody").innerHTML =
-        '<tr><td colspan="8" class="storyboard-loading">完整分镜表载入失败，请刷新页面后重试。</td></tr>';
+        '<tr><td colspan="7" class="storyboard-loading">完整分镜表载入失败，请刷新页面后重试。</td></tr>';
     });
 }
+setupLessonInteractions(page);

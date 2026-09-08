@@ -2250,11 +2250,10 @@ h1 {
 .full-storyboard-scroll th:nth-child(1) { width: 6%; }
 .full-storyboard-scroll th:nth-child(2) { width: 9%; }
 .full-storyboard-scroll th:nth-child(3) { width: 9%; }
-.full-storyboard-scroll th:nth-child(4) { width: 12%; }
-.full-storyboard-scroll th:nth-child(5) { width: 29%; }
-.full-storyboard-scroll th:nth-child(6) { width: 14%; }
-.full-storyboard-scroll th:nth-child(7) { width: 13%; }
-.full-storyboard-scroll th:nth-child(8) { width: 8%; }
+.full-storyboard-scroll th:nth-child(4) { width: 14%; }
+.full-storyboard-scroll th:nth-child(5) { width: 32%; }
+.full-storyboard-scroll th:nth-child(6) { width: 15%; }
+.full-storyboard-scroll th:nth-child(7) { width: 15%; }
 .storyboard-loading {
   height: 160px;
   text-align: center;
