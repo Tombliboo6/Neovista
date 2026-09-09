@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="prism-title prism-description">
+  <title id="prism-title">PRISM</title>
+  <desc id="prism-description">青色、玫红与亮黄色三面棱镜</desc>
+  <rect x="48" y="48" width="928" height="928" rx="224" fill="#5B42F3"/>
+  <path d="M512 210 252 706 512 526Z" fill="#42E8E0"/>
+  <path d="M512 210 772 706 512 526Z" fill="#FF4F81"/>
+  <path d="M252 706 512 526 772 706Z" fill="#FFD84D"/>
+  <path d="M512 210 252 706H772L512 210Z" fill="none" stroke="#17205D" stroke-width="34" stroke-linejoin="round"/>
+  <path d="M512 210V526M252 706 512 526 772 706" fill="none" stroke="#17205D" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

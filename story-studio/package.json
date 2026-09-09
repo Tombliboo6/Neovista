@@ -1,0 +1,101 @@
+{
+  "name": "prism-autodrama",
+  "version": "0.1.40",
+  "private": true,
+  "main": "desktop/main.cjs",
+  "type": "module",
+  "description": "PRISM Story Studio 本地 AI 影视创作工作台",
+  "author": "PRISM",
+  "scripts": {
+    "postinstall": "node node_modules/electron/install.js",
+    "check": "node scripts/check-project.mjs",
+    "test": "node --test \"tests/**/*.test.mjs\"",
+    "web:dev": "npm --prefix web run dev",
+    "web:open": "node scripts/start-autodrama-web.mjs",
+    "web:serve": "npm --prefix web run preview -- --port 5173",
+    "web:build": "npm --prefix web run build",
+    "web:preview": "npm --prefix web run preview",
+    "web:test": "npm --prefix web run test",
+    "desktop:components": "node scripts/prepare-desktop-components.mjs",
+    "desktop:prepare": "npm run desktop:components && npm run web:build && node scripts/build-desktop.mjs",
+    "desktop:dev": "npm run desktop:prepare && electron desktop/main.cjs",
+    "desktop:test": "node --test \"tests/desktop-*.test.mjs\"",
+    "desktop:build": "npm run desktop:prepare && electron-builder --win --dir",
+    "desktop:pack": "npm run desktop:prepare && electron-builder --win nsis && npm run desktop:delivery",
+    "desktop:delivery": "node scripts/assemble-desktop-delivery.mjs",
+    "ace:installer": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-ace-installer.ps1",
+    "ace:delivery": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/assemble-ace-delivery.ps1"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "devDependencies": {
+    "electron": "43.3.0",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.25.12"
+  },
+  "build": {
+    "appId": "com.prism.storystudio",
+    "productName": "PRISM Story Studio",
+    "asar": true,
+    "electronDist": "node_modules/electron/dist",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "desktop/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "desktop-dist",
+        "to": "desktop-dist",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "docs/CLIENT_THIRD_PARTY_NOTICES.md",
+        "to": "docs/CLIENT_THIRD_PARTY_NOTICES.md"
+      },
+      {
+        "from": "desktop-resources/tools",
+        "to": "tools",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "dir"
+      ],
+      "executableName": "PRISM Story Studio",
+      "icon": "build/icon.ico",
+      "signExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "PRISM Story Studio",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "installerSidebar": "build/installerSidebar.bmp",
+      "include": "build/installer.nsh",
+      "runAfterFinish": true,
+      "warningsAsErrors": true,
+      "artifactName": "PRISM-Story-Studio-Setup-${version}.${ext}",
+      "deleteAppDataOnUninstall": false
+    }
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "4.0.49",
+    "@ai-sdk/openai-compatible": "3.0.43",
+    "ai": "7.0.92",
+    "ajv": "8.20.0"
+  }
+}

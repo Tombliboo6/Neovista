@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "projectName": "代表性样片",
+  "executionMode": "approval",
+  "output": {
+    "aspectRatio": "9:16",
+    "width": 720,
+    "height": 1280,
+    "language": "zh-CN"
+  },
+  "video": {
+    "provider": "prism-h3",
+    "precision": "bf16",
+    "inferenceSteps": 20,
+    "acceleration": []
+  },
+  "music": {
+    "provider": "minimax-music-3"
+  }
+}
+

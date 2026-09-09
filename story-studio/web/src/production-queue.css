@@ -1,0 +1,27 @@
+.task-status.expanded { z-index: 65; width: min(480px, calc(100vw - 48px)); }
+.task-status-detail { max-height: min(65vh, 680px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #80536d #202024; }
+.task-status-detail::-webkit-scrollbar { width: 8px; }
+.task-status-detail::-webkit-scrollbar-track { background: #202024; }
+.task-status-detail::-webkit-scrollbar-thumb { border: 2px solid #202024; border-radius: 8px; background: #80536d; }
+.task-status-detail::-webkit-scrollbar-button { display: none; }
+.task-status-detail[hidden] { display: none; }
+.production-queue { min-width: 0; margin-top: 12px; color: var(--text, #e8e8ee); border-top: 1px solid var(--border, #50505d); }
+.production-queue > summary { padding: 14px 0; cursor: pointer; font-size: 13px; line-height: 1.6; }
+.production-queue-body { min-width: 0; padding: 0 0 12px; font-size: 13px; line-height: 1.6; }
+.production-queue-body > small { display: block; color: var(--text, #e8e8ee); font-size: 12px; }
+.production-limits { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.production-limits label { display: grid; gap: 6px; min-width: 0; }
+.production-limits input, .production-limits select, .production-limits button { min-height: 40px; width: 100%; color: inherit; background: var(--panel, #202027); border: 1px solid var(--border, #666674); border-radius: 6px; padding: 6px 10px; }
+.production-queue summary:focus-visible, .production-limits :focus-visible { outline: 2px solid var(--accent, #baafff); outline-offset: 3px; }
+.production-job { border-top: 1px solid var(--border, #50505d); padding: 12px 0; overflow-wrap: anywhere; }
+.production-job summary { cursor: pointer; min-height: 28px; }
+.production-job small { display: block; opacity: .85; }
+.task-status-detail .production-job ul { display: block; max-height: none; padding-left: 20px; overflow: visible; list-style: disc; }
+.task-status-detail .production-job li { display: list-item; min-height: 0; margin: 10px 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.task-status-detail .production-job li strong { font-size: 12px; }
+.task-status-detail .production-job li small { font-size: 12px; white-space: normal; }
+.production-job pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto; }
+@media (max-width: 640px) { .task-status.expanded { right: 12px; width: calc(100vw - 24px); } .production-limits { grid-template-columns: 1fr; } }
+
+.production-segment { display:flex; gap:8px; flex-wrap:wrap; padding:10px 0; border-bottom:1px solid var(--border); }
+.production-segment strong { flex-basis:100%; }

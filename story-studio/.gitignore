@@ -1,0 +1,69 @@
+# Secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Dependencies and build output
+node_modules/
+.next/
+dist/
+build/
+desktop-dist/
+desktop-resources/tools/
+release/
+installer/ace/bin/*
+!installer/ace/bin/7za.exe
+coverage/
+*.tsbuildinfo
+
+# Runtime assets and customer data
+runtime-data/*
+!runtime-data/README.md
+uploads/
+outputs/
+models/
+cache/
+temp/
+.tmp/
+
+# Large generated media
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.flac
+*.png
+*.jpg
+*.jpeg
+*.webp
+!web/public/assets/ui/character-generation-loading-v1.png
+!web/public/assets/ui/character-turnaround-loading-v1.png
+!web/public/assets/ui/scene-generation-loading-v1.png
+!web/public/assets/ui/prop-generation-loading-v1.png
+*.safetensors
+*.ckpt
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Packaged application artwork and built-in style previews
+!build/
+!build/**
+!runtime-data/style-presets/
+!runtime-data/style-presets/v2/
+!runtime-data/style-presets/v2/*.png
+
+!docs/
+!docs/**
+!.ai-pm/
+!.ai-pm/PROJECT_STATE.md
